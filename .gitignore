@@ -20,3 +20,4 @@ dist/
 
 # Appstore publish artifacts
 screenshots/
+node_modules/
