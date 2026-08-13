@@ -106,12 +106,13 @@ Run with the pebble-tool venv python inside the FHS env
 - Antialiasing is ON at the current ~6 px/cell density and looks good; it
   was OFF at the earlier ~4 px/cell density where it smeared 1 px lines into
   noise. If the grid ever gets denser, revisit.
-- Edge styling in the digit region keys off the LOWER endpoint altitude,
-  EXCEPT walls (endpoints ≥2 cells apart), whose brightness scales with
-  wall height capped at Blue (index 2): uniformly dark walls hid the 3D
-  entirely, one step brighter (BlueMoon) crowded the stroke gaps and hurt
-  digit parsing. Terrain-ring edges key off the HIGHER endpoint so crests
-  light up. The crest-vs-wall decision must be STRUCTURAL (both endpoints
+- Color edges use FdF-style per-vertex interpolation: mixed-altitude edges
+  are split into up to 4 segments blending between the endpoints' palette
+  colors, CAPPED at VividCerulean (index 4). The cap is what protects
+  legibility: full-ramp gradients (and even a Malachite cap) put bright
+  segments against the white rims, reading as fuzzy doubled strokes.
+  Uniformly dark walls (the pre-gradient state) hid the 3D entirely. Warm
+  ramp colors are reserved for the morph sweep (equal-endpoint edges). The crest-vs-wall decision must be STRUCTURAL (both endpoints
   in the bleed ring = terrain), never altitude-based: an altitude threshold
   made rising digits' walls crest-glow then snap dark mid-climb — a
   screen-wide flash at every minute change.

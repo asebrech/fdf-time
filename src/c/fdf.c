@@ -256,36 +256,53 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         GColor c;
         uint8_t w = 1;
 #if defined(PBL_COLOR)
-        // Altitude ramp keyed on the color altitudes. The crest-vs-wall
-        // decision is STRUCTURAL, not altitude-based: edges wholly inside
-        // the bleed ring are terrain and key on the higher endpoint so
-        // crests light up; everything in the digit region keys on the lower
-        // endpoint so walls recede and holes stay readable. (Keying on
-        // altitude here made every rising digit's walls crest-glow and then
-        // snap dark mid-climb — a visible flash.) Tops whiten only near the
-        // end of the climb, so a rising plateau sweeps the warm end of the
-        // ramp before snapping to white.
+        // FdF-style per-vertex coloring: each endpoint takes its own
+        // altitude color and the line blends between them in short
+        // segments — the wireframe equivalent of the original's per-pixel
+        // interpolation. Finished tops stay white; a wall is a small
+        // navy->cyan->warm gradient climbing to the rim, and hole floors
+        // stay readable because the gradient is anchored dark at the floor.
+        // Everything moves by one palette step at a time, so no snaps.
         uint16_t ck_a = s_ck8[y][x];
         uint16_t ck_b = s_ck8[ny][nx];
-        uint16_t ck_min = ck_a < ck_b ? ck_a : ck_b;
-        uint16_t ck_max = ck_a > ck_b ? ck_a : ck_b;
-        bool is_top = ck_min >= (9 << 8);
-        bool terrain_edge = prv_in_ring(y, x) && prv_in_ring(ny, nx);
-        uint16_t z_key;
-        if (terrain_edge) {
-          z_key = ck_max;
-        } else if (ck_max - ck_min >= (2 << 8)) {
-          // Digit wall: brightness scales with the wall's height (a full
-          // 10-cell wall reaches Blue, index 2) so the extrusion reads,
-          // while staying far below the white tops — holes stay legible.
-          // Growing walls brighten smoothly during the climb, no snap.
-          // (Capping one step higher, at BlueMoon, made the stroke gaps so
-          // busy the digits got hard to parse at a glance.)
-          z_key = ck_max / 4;
+        if (ck_a >= (9 << 8) && ck_b >= (9 << 8)) {
+          c = GColorWhite;
         } else {
-          z_key = ck_min;
+          int ia = ck_a >> 8;
+          int ib = ck_b >> 8;
+          if (ia != ib) {
+            int di = ib - ia;
+            int steps = di < 0 ? -di : di;
+            if (steps > 4) {
+              steps = 4;
+            }
+            GPoint pa = s_pts[y][x];
+            GPoint pb = s_pts[ny][nx];
+            for (int s = 0; s < steps; s++) {
+              GPoint q0 = GPoint(pa.x + (pb.x - pa.x) * s / steps,
+                                 pa.y + (pb.y - pa.y) * s / steps);
+              GPoint q1 = GPoint(pa.x + (pb.x - pa.x) * (s + 1) / steps,
+                                 pa.y + (pb.y - pa.y) * (s + 1) / steps);
+              int si = ia + di * (2 * s + 1) / (2 * steps);
+              // Cap slope gradients at VividCerulean: brighter segments
+              // right under the white rims read as fuzzy thick strokes and
+              // wreck glanceability (tried Malachite: green tips doubled
+              // the rims; warm colors were worse still). The warm ramp
+              // stays reserved for the morph sweep (equal-endpoint edges).
+              if (si > 4) {
+                si = 4;
+              }
+              GColor sc = (GColor)PALETTE[si];
+              if (!gcolor_equal(sc, last)) {
+                graphics_context_set_stroke_color(ctx, sc);
+                last = sc;
+              }
+              graphics_draw_line(ctx, q0, q1);
+            }
+            continue;
+          }
+          c = (GColor)PALETTE[ia];
         }
-        c = is_top ? GColorWhite : (GColor)PALETTE[z_key >> 8];
 #else
         uint16_t z_here = s_z8[y][x];
         uint16_t z_n = s_z8[ny][nx];
