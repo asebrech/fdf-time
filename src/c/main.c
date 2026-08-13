@@ -8,7 +8,7 @@
 // User settings, edited from the phone via Clay and persisted on the watch.
 #define SETTINGS_KEY 1
 typedef struct {
-  uint8_t theme;        // palette: 0 classic, 1 matrix, 2 lava, 3 ice
+  uint8_t theme;        // palette index, see fdf_set_style (0 = catppuccin)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
   uint8_t relief;       // slope-gradient cap: 0 subtle, 1 balanced, 2 vivid
   bool splash42;        // play the "42" splash on launch

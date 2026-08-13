@@ -33,47 +33,12 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 // bright peaks, one ramp per user-selectable theme. Every ramp must keep
 // its low indices recessive (walls/floors) and save its brightest steps
 // for the top — the legibility hierarchy depends on it.
+// All are hand-quantized ports of popular editor color schemes. Pebble has
+// 4 levels per channel, so each entry picks the nearest VIVID Pebble color
+// that keeps the scheme's hue identity (naive rounding turns pastel schemes
+// into washed-out gray).
 static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
-  { // 0: Classic FdF — deep blue sea to warm peaks
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDukeBlueARGB8},
-    {.argb = GColorBlueARGB8},           {.argb = GColorBlueMoonARGB8},
-    {.argb = GColorVividCeruleanARGB8},  {.argb = GColorCyanARGB8},
-    {.argb = GColorMalachiteARGB8},      {.argb = GColorSpringBudARGB8},
-    {.argb = GColorYellowARGB8},         {.argb = GColorChromeYellowARGB8},
-    {.argb = GColorOrangeARGB8},
-  },
-  { // 1: Matrix — saturated phosphor greens only (desaturated MayGreen/
-    // KellyGreen read as washed-out sage); dark low end keeps the ocean's
-    // depth contrast
-    {.argb = GColorDarkGreenARGB8},      {.argb = GColorDarkGreenARGB8},
-    {.argb = GColorDarkGreenARGB8},      {.argb = GColorIslamicGreenARGB8},
-    {.argb = GColorIslamicGreenARGB8},   {.argb = GColorGreenARGB8},
-    {.argb = GColorGreenARGB8},          {.argb = GColorMalachiteARGB8},
-    {.argb = GColorScreaminGreenARGB8},  {.argb = GColorSpringBudARGB8},
-    {.argb = GColorMintGreenARGB8},
-  },
-  { // 2: Lava — pure fire, embers to sun (no Folly: its pink tint broke
-    // the heat ramp at the wall tips)
-    {.argb = GColorBulgarianRoseARGB8},  {.argb = GColorBulgarianRoseARGB8},
-    {.argb = GColorDarkCandyAppleRedARGB8}, {.argb = GColorDarkCandyAppleRedARGB8},
-    {.argb = GColorRedARGB8},            {.argb = GColorSunsetOrangeARGB8},
-    {.argb = GColorOrangeARGB8},         {.argb = GColorChromeYellowARGB8},
-    {.argb = GColorYellowARGB8},         {.argb = GColorIcterineARGB8},
-    {.argb = GColorPastelYellowARGB8},
-  },
-  { // 3: Ice — polar blues to white
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDukeBlueARGB8},
-    {.argb = GColorCobaltBlueARGB8},     {.argb = GColorBlueMoonARGB8},
-    {.argb = GColorPictonBlueARGB8},     {.argb = GColorVividCeruleanARGB8},
-    {.argb = GColorElectricBlueARGB8},   {.argb = GColorCelesteARGB8},
-    {.argb = GColorCelesteARGB8},        {.argb = GColorWhiteARGB8},
-    {.argb = GColorWhiteARGB8},
-  },
-  // The next six are hand-quantized ports of popular editor color schemes.
-  // Pebble has 4 levels per channel, so each entry picks the nearest VIVID
-  // Pebble color that keeps the scheme's hue identity (naive rounding turns
-  // pastel schemes into washed-out gray — the MayGreen lesson).
-  { // 4: Catppuccin Mocha — night-lavender base, pastel accents
+  { // 0: Catppuccin Mocha — night-lavender base, pastel accents
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
     {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
     {.argb = GColorRichBrilliantLavenderARGB8}, {.argb = GColorPictonBlueARGB8},
@@ -81,8 +46,8 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
     {.argb = GColorBrilliantRoseARGB8},
   },
-  { // 5: Gruvbox — retro warmth: olive-brown ground, signature orange
-    // walls (no red — it read as Lava's twin)
+  { // 1: Gruvbox — retro warmth: olive-brown ground, amber walls (red
+    // read as pure fire; plain orange read salmon on thin AA lines)
     {.argb = GColorDarkGrayARGB8},       {.argb = GColorArmyGreenARGB8},
     {.argb = GColorArmyGreenARGB8},      {.argb = GColorWindsorTanARGB8},
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorBrassARGB8},
@@ -90,7 +55,7 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorPastelYellowARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 6: Nord — polar night floor, frost mids, aurora morph
+  { // 2: Nord — polar night floor, frost mids, aurora morph
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorMidnightGreenARGB8},
     {.argb = GColorDarkGrayARGB8},       {.argb = GColorCadetBlueARGB8},
     {.argb = GColorBabyBlueEyesARGB8},   {.argb = GColorCelesteARGB8},
@@ -98,7 +63,7 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
     {.argb = GColorSunsetOrangeARGB8},
   },
-  { // 7: Tokyo Night — deep navy, neon blue walls, city-light morph
+  { // 3: Tokyo Night — deep navy, neon blue walls, city-light morph
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorOxfordBlueARGB8},
     {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
     {.argb = GColorPictonBlueARGB8},     {.argb = GColorBabyBlueEyesARGB8},
@@ -106,7 +71,7 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
     {.argb = GColorCelesteARGB8},
   },
-  { // 8: Kanagawa — Hokusai wave: deep teal sea, autumn-gold crests
+  { // 4: Kanagawa — Hokusai wave: deep teal sea, autumn-gold crests
     {.argb = GColorMidnightGreenARGB8},  {.argb = GColorMidnightGreenARGB8},
     {.argb = GColorCadetBlueARGB8},      {.argb = GColorPurpureusARGB8},
     {.argb = GColorPictonBlueARGB8},     {.argb = GColorBrassARGB8},
@@ -114,7 +79,7 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorPastelYellowARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 9: Dracula — purple night, hot pink walls, cyan/green accents
+  { // 5: Dracula — purple night, hot pink walls, cyan/green accents
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
     {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
     {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorCelesteARGB8},
@@ -125,13 +90,27 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
 };
 #define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))
 
+// Finished plateau tops take the theme's foreground ("text") color — the
+// warm schemes' creams quantize to PastelYellow, the cool ones to White.
+static const GColor8 TOPS[PALETTE_COUNT] = {
+  {.argb = GColorWhiteARGB8},         // Catppuccin text #cdd6f4
+  {.argb = GColorPastelYellowARGB8},  // Gruvbox fg #ebdbb2 (cream)
+  {.argb = GColorWhiteARGB8},         // Nord snow storm #d8dee9
+  {.argb = GColorWhiteARGB8},         // Tokyo Night fg #c0caf5
+  {.argb = GColorPastelYellowARGB8},  // Kanagawa fujiWhite #dcd7ba
+  {.argb = GColorWhiteARGB8},         // Dracula fg #f8f8f2
+};
+
 static const GColor8 *s_palette = PALETTES[0];
+static GColor8 s_top = {.argb = GColorWhiteARGB8};
 // Slope-gradient brightness cap (palette index): the knob behind the
 // "relief intensity" setting. See the cap comment in fdf_draw.
 static int s_grad_cap = 4;
 
 void fdf_set_style(int theme, int relief) {
-  s_palette = PALETTES[(unsigned)theme < PALETTE_COUNT ? theme : 0];
+  unsigned t = (unsigned)theme < PALETTE_COUNT ? theme : 0;
+  s_palette = PALETTES[t];
+  s_top = TOPS[t];
   s_grad_cap = relief <= 0 ? 2 : relief >= 2 ? 6 : 4;
 }
 
@@ -351,14 +330,15 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         // FdF-style per-vertex coloring: each endpoint takes its own
         // altitude color and the line blends between them in short
         // segments — the wireframe equivalent of the original's per-pixel
-        // interpolation. Finished tops stay white; a wall is a small
-        // navy->cyan->warm gradient climbing to the rim, and hole floors
-        // stay readable because the gradient is anchored dark at the floor.
-        // Everything moves by one palette step at a time, so no snaps.
+        // interpolation. Finished tops take the theme's foreground color;
+        // a wall is a small dark->accent gradient climbing to the rim, and
+        // hole floors stay readable because the gradient is anchored dark
+        // at the floor. Everything moves by one palette step at a time, so
+        // no snaps.
         uint16_t ck_a = s_ck8[y][x];
         uint16_t ck_b = s_ck8[ny][nx];
         if (ck_a >= (9 << 8) && ck_b >= (9 << 8)) {
-          c = GColorWhite;
+          c = (GColor)s_top;
         } else {
           int ia = ck_a >> 8;
           int ib = ck_b >> 8;
