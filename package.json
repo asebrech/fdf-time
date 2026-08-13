@@ -1,7 +1,7 @@
 {
   "name": "fdf-time",
   "author": "asebrech",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
