@@ -86,13 +86,16 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorPastelYellowARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 5: Dracula — purple night, hot pink walls, cyan/green accents
+  { // 5: Dracula — purple night, hot pink walls, green/cyan crests.
+    // Wall body stays on the dark comment-blue; the pastel purple closes
+    // the morph sweep, and the pale cyan sits at index 6 (only the rare
+    // highest crest peaks) so large areas stay saturated.
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
-    {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
-    {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorCelesteARGB8},
-    {.argb = GColorScreaminGreenARGB8},  {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
+    {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorScreaminGreenARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorPastelYellowARGB8},
     {.argb = GColorRajahARGB8},          {.argb = GColorSunsetOrangeARGB8},
-    {.argb = GColorBrilliantRoseARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},
   },
 };
 #define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))
