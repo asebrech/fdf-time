@@ -13,8 +13,9 @@ static Animation *s_spin_anim;
 static AppTimer *s_splash_timer;
 
 static void prv_update_proc(Layer *layer, GContext *ctx) {
-  // AA smears 1 px lines at this wireframe density — crisp beats smooth here.
-  graphics_context_set_antialiased(ctx, false);
+  // AA is fine at the current cell size (~6 px); it smeared into noise at
+  // the pre-trimetric density. No-op on 1-bit displays.
+  graphics_context_set_antialiased(ctx, true);
   fdf_draw(&s_model, ctx);
 }
 
