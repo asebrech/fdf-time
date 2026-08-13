@@ -14,7 +14,7 @@ module.exports = [
       {
         "type": "select",
         "messageKey": "Theme",
-        "defaultValue": "0",
+        "defaultValue": "3",
         "label": "Color theme",
         "options": [
           { "label": "Catppuccin", "value": "0" },
