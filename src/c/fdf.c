@@ -271,7 +271,20 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         uint16_t ck_max = ck_a > ck_b ? ck_a : ck_b;
         bool is_top = ck_min >= (9 << 8);
         bool terrain_edge = prv_in_ring(y, x) && prv_in_ring(ny, nx);
-        uint16_t z_key = terrain_edge ? ck_max : ck_min;
+        uint16_t z_key;
+        if (terrain_edge) {
+          z_key = ck_max;
+        } else if (ck_max - ck_min >= (2 << 8)) {
+          // Digit wall: brightness scales with the wall's height (a full
+          // 10-cell wall reaches Blue, index 2) so the extrusion reads,
+          // while staying far below the white tops — holes stay legible.
+          // Growing walls brighten smoothly during the climb, no snap.
+          // (Capping one step higher, at BlueMoon, made the stroke gaps so
+          // busy the digits got hard to parse at a glance.)
+          z_key = ck_max / 4;
+        } else {
+          z_key = ck_min;
+        }
         c = is_top ? GColorWhite : (GColor)PALETTE[z_key >> 8];
 #else
         uint16_t z_here = s_z8[y][x];
