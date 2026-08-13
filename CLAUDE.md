@@ -26,6 +26,27 @@ otherwise prefix with `devenv shell --`).
 There are no unit tests; verification = `pebble build` succeeds + visual check
 via emulator screenshot.
 
+## Store visual pipeline (tools/)
+
+Run with the pebble-tool venv python inside the FHS env
+(`pebble-fhs .devenv/state/uv/tools/pebble-tool/bin/python tools/<script>`):
+
+- `story_capture.py` / `story_cut.py` — per platform, records a scripted
+  session (reinstall replays the 42 splash, emu-tap plays the orbit) via QEMU
+  monitor screendumps at 15 fps, then cuts `_boot.gif` and `_orbit.gif`. The
+  cut auto-skips the bright OS loading screen.
+- `rollover_capture.py` / `rollover_cut.py` — same, around the real
+  wall-clock minute boundary (SiFli boards ignore time injection) for
+  `_rollover.gif`.
+- `upload_release.py <project> <version> <notes> <gifs_dir>` — posts a
+  release with `replaceScreenshots=true`; asset order per platform: boot,
+  rollover, orbit GIFs, then `_steady.png`.
+- ALWAYS verify every GIF with a contact sheet before uploading
+  (`ffmpeg -i x.gif -vf "select=not(mod(n\,5)),scale=60:-1,tile=13x1"`).
+- Zombie emulators cause `Connection refused`: clean with
+  `pebble-fhs bash -c 'pkill -9 -f qemu-pebble; pkill -9 -f pypkjs; rm -f /tmp/pb-emulator.json'`
+  (the state file lives in the FHS env's private /tmp).
+
 ## Architecture
 
 - `src/c/fdf.c` / `fdf.h` — the core: a heightmap (`FdfModel`, inner 16×25
