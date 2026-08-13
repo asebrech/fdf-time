@@ -42,6 +42,10 @@ let
       # breaks the firmware build. Clear them inside the FHS environment.
       unset CC CXX LD AR AS RANLIB STRIP OBJCOPY OBJDUMP NM SIZE READELF
       unset NIX_CFLAGS_COMPILE NIX_LDFLAGS
+      # The FHS env has no system CA store; Python's ssl (used by the
+      # CloudPebble/Dev Connect websocket) needs an explicit bundle.
+      export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      export NIX_SSL_CERT_FILE="$SSL_CERT_FILE"
       if [ $# -eq 0 ]; then
         exec bash
       fi
