@@ -20,7 +20,13 @@ module.exports = [
           { "label": "Classic FdF", "value": "0" },
           { "label": "Matrix", "value": "1" },
           { "label": "Lava", "value": "2" },
-          { "label": "Ice", "value": "3" }
+          { "label": "Ice", "value": "3" },
+          { "label": "Catppuccin", "value": "4" },
+          { "label": "Gruvbox", "value": "5" },
+          { "label": "Nord", "value": "6" },
+          { "label": "Tokyo Night", "value": "7" },
+          { "label": "Kanagawa", "value": "8" },
+          { "label": "Dracula", "value": "9" }
         ]
       },
       {

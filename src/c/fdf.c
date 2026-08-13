@@ -42,21 +42,24 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorYellowARGB8},         {.argb = GColorChromeYellowARGB8},
     {.argb = GColorOrangeARGB8},
   },
-  { // 1: Matrix — phosphor greens
+  { // 1: Matrix — saturated phosphor greens only (desaturated MayGreen/
+    // KellyGreen read as washed-out sage); dark low end keeps the ocean's
+    // depth contrast
     {.argb = GColorDarkGreenARGB8},      {.argb = GColorDarkGreenARGB8},
-    {.argb = GColorMayGreenARGB8},       {.argb = GColorMayGreenARGB8},
-    {.argb = GColorKellyGreenARGB8},     {.argb = GColorGreenARGB8},
-    {.argb = GColorMalachiteARGB8},      {.argb = GColorScreaminGreenARGB8},
-    {.argb = GColorSpringBudARGB8},      {.argb = GColorMintGreenARGB8},
+    {.argb = GColorDarkGreenARGB8},      {.argb = GColorIslamicGreenARGB8},
+    {.argb = GColorIslamicGreenARGB8},   {.argb = GColorGreenARGB8},
+    {.argb = GColorGreenARGB8},          {.argb = GColorMalachiteARGB8},
+    {.argb = GColorScreaminGreenARGB8},  {.argb = GColorSpringBudARGB8},
     {.argb = GColorMintGreenARGB8},
   },
-  { // 2: Lava — embers to sun
-    {.argb = GColorBulgarianRoseARGB8},  {.argb = GColorDarkCandyAppleRedARGB8},
-    {.argb = GColorDarkCandyAppleRedARGB8}, {.argb = GColorRedARGB8},
-    {.argb = GColorFollyARGB8},          {.argb = GColorSunsetOrangeARGB8},
+  { // 2: Lava — pure fire, embers to sun (no Folly: its pink tint broke
+    // the heat ramp at the wall tips)
+    {.argb = GColorBulgarianRoseARGB8},  {.argb = GColorBulgarianRoseARGB8},
+    {.argb = GColorDarkCandyAppleRedARGB8}, {.argb = GColorDarkCandyAppleRedARGB8},
+    {.argb = GColorRedARGB8},            {.argb = GColorSunsetOrangeARGB8},
     {.argb = GColorOrangeARGB8},         {.argb = GColorChromeYellowARGB8},
-    {.argb = GColorRajahARGB8},          {.argb = GColorYellowARGB8},
-    {.argb = GColorIcterineARGB8},
+    {.argb = GColorYellowARGB8},         {.argb = GColorIcterineARGB8},
+    {.argb = GColorPastelYellowARGB8},
   },
   { // 3: Ice — polar blues to white
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDukeBlueARGB8},
@@ -65,6 +68,59 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorElectricBlueARGB8},   {.argb = GColorCelesteARGB8},
     {.argb = GColorCelesteARGB8},        {.argb = GColorWhiteARGB8},
     {.argb = GColorWhiteARGB8},
+  },
+  // The next six are hand-quantized ports of popular editor color schemes.
+  // Pebble has 4 levels per channel, so each entry picks the nearest VIVID
+  // Pebble color that keeps the scheme's hue identity (naive rounding turns
+  // pastel schemes into washed-out gray — the MayGreen lesson).
+  { // 4: Catppuccin Mocha — night-lavender base, pastel accents
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
+    {.argb = GColorRichBrilliantLavenderARGB8}, {.argb = GColorPictonBlueARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
+    {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
+    {.argb = GColorBrilliantRoseARGB8},
+  },
+  { // 5: Gruvbox — retro warmth: olive-brown ground, signature orange
+    // walls (no red — it read as Lava's twin)
+    {.argb = GColorDarkGrayARGB8},       {.argb = GColorArmyGreenARGB8},
+    {.argb = GColorArmyGreenARGB8},      {.argb = GColorWindsorTanARGB8},
+    {.argb = GColorChromeYellowARGB8},   {.argb = GColorBrassARGB8},
+    {.argb = GColorLimerickARGB8},       {.argb = GColorRajahARGB8},
+    {.argb = GColorPastelYellowARGB8},   {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorPastelYellowARGB8},
+  },
+  { // 6: Nord — polar night floor, frost mids, aurora morph
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorMidnightGreenARGB8},
+    {.argb = GColorDarkGrayARGB8},       {.argb = GColorCadetBlueARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},   {.argb = GColorCelesteARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
+    {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
+    {.argb = GColorSunsetOrangeARGB8},
+  },
+  { // 7: Tokyo Night — deep navy, neon blue walls, city-light morph
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorOxfordBlueARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
+    {.argb = GColorPictonBlueARGB8},     {.argb = GColorBabyBlueEyesARGB8},
+    {.argb = GColorMediumSpringGreenARGB8}, {.argb = GColorSpringBudARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
+    {.argb = GColorCelesteARGB8},
+  },
+  { // 8: Kanagawa — Hokusai wave: deep teal sea, autumn-gold crests
+    {.argb = GColorMidnightGreenARGB8},  {.argb = GColorMidnightGreenARGB8},
+    {.argb = GColorCadetBlueARGB8},      {.argb = GColorPurpureusARGB8},
+    {.argb = GColorPictonBlueARGB8},     {.argb = GColorBrassARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorSunsetOrangeARGB8},
+    {.argb = GColorChromeYellowARGB8},   {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorPastelYellowARGB8},
+  },
+  { // 9: Dracula — purple night, hot pink walls, cyan/green accents
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
+    {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorCelesteARGB8},
+    {.argb = GColorScreaminGreenARGB8},  {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorSunsetOrangeARGB8},
+    {.argb = GColorBrilliantRoseARGB8},
   },
 };
 #define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))

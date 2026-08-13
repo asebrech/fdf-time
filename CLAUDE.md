@@ -82,8 +82,12 @@ Run with the pebble-tool venv python inside the FHS env
   bounding-box corners only — border and bleed ring intentionally clip past
   the screen edges); wireframe drawn right+bottom-neighbor with a visual
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
-  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, an
-  11-color altitude palette plus a rolling terrain swell in the bleed ring,
+  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, ten
+  user-selectable 11-step altitude palettes (4 house themes + hand-quantized
+  ports of Catppuccin/Gruvbox/Nord/Tokyo Night/Kanagawa/Dracula — Pebble is
+  4-levels-per-channel, so ports pick the nearest VIVID hue, never naive
+  rounding: pastels round to washed-out gray) plus a rolling terrain swell
+  in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
