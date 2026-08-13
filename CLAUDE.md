@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 "FdF Time" — a Pebble watchface rendering the time as a 3D wireframe
-heightmap in isometric projection, in the style of École 42's FdF project.
+heightmap in a trimetric projection, in the style of École 42's FdF project.
 Written in C against the Pebble SDK (2026 Core Devices SDK, currently 4.33).
 Built with waf via `pebble-tool`, tested in the QEMU emulator. Dev
 environment is managed by devenv/direnv on NixOS.
@@ -19,6 +19,9 @@ otherwise prefix with `devenv shell --`).
 - `pebble logs --emulator basalt` — tail `APP_LOG` output.
 - `pebble kill` — stop all emulators.
 - `pebble clean` — wipe the build directory.
+- `pebble install --phone` / `pebble screenshot <out.png> --phone` — real
+  watch via Dev Connect (requires `pebble login`; note: positional args go
+  BEFORE the bare `--phone` flag or it swallows them as a phone IP).
 
 There are no unit tests; verification = `pebble build` succeeds + visual check
 via emulator screenshot.
@@ -48,8 +51,9 @@ via emulator screenshot.
 
 ## Rendering lessons already learned (don't regress these)
 
-- Antialiasing is OFF on purpose: at ~4 px/cell it smears 1 px lines into
-  noise.
+- Antialiasing is ON at the current ~6 px/cell density and looks good; it
+  was OFF at the earlier ~4 px/cell density where it smeared 1 px lines into
+  noise. If the grid ever gets denser, revisit.
 - Edge styling keys off the LOWER endpoint altitude: that is what keeps
   digit holes/counters readable (walls recede instead of filling them).
 - 1-cell-thick digit strokes (sharp ridges) were tried and are NOT legible;
@@ -81,8 +85,6 @@ hardcoded coordinates. Test at minimum on `basalt` (color rect), `chalk`
   depending on platform), no floats in hot paths on aplite, always destroy
   what you create in `window_unload`/`deinit`.
 - `clock_is_24h_style()` must be respected for time formatting.
-- Strings passed to `text_layer_set_text` must be `static` (the layer does
-  not copy them).
 
 ## Claude Code skill
 
