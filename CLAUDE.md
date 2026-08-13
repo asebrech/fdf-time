@@ -94,8 +94,22 @@ Run with the pebble-tool venv python inside the FHS env
   `TRIG_MAX_ANGLE`). Color platforms tick `SECOND_UNIT` to advance
   `wave_phase` (one swell wavelength per 30 s); 1-bit stays on
   `MINUTE_UNIT` — no terrain there, and second-ticking wastes battery.
+- `src/pkjs/` — phone-side JS: `config.js` is the Clay settings page
+  (theme, wave mode, relief intensity, splash, shake orbit, BT vibe),
+  `index.js` just instantiates Clay. Settings arrive in `main.c` via
+  AppMessage (`prv_inbox_received` — Clay sends select values as STRINGS,
+  toggles as ints; `prv_tuple_int` handles both), persist under
+  `SETTINGS_KEY`, and apply live via `prv_apply_settings` (re-subscribes
+  tick/tap/connection services; safe to call repeatedly).
+- Headless settings test: run `pebble emu-app-config --emulator basalt &`,
+  find the pebble process's listening port (`ss -tlnp`), then
+  `curl "http://localhost:<port>/close?<urlencoded settings JSON>"` — this
+  is exactly what Clay's Save button does.
 - `package.json` — Pebble manifest under the `"pebble"` key: UUID,
-  `targetPlatforms`, `watchapp.watchface: true`, `resources.media`.
+  `targetPlatforms`, `watchapp.watchface: true`, `resources.media`, plus
+  `capabilities: ["configurable"]` and the Clay `messageKeys`. After
+  editing `messageKeys`, `rm -rf build` — waf won't regenerate
+  `MESSAGE_KEY_*` constants otherwise (same staleness as versionLabel).
 - `wscript` — standard Pebble waf template; rarely needs editing.
 - `devenv.nix` — defines the `pebble-fhs` FHS wrapper (the SDK's downloaded
   ARM toolchain/QEMU are FHS binaries that can't run bare on NixOS) and the

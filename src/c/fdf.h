@@ -34,6 +34,10 @@ typedef struct {
 } FdfModel;
 
 void fdf_model_init(FdfModel *m, GRect bounds);
+// Select the altitude palette (0 classic, 1 matrix, 2 lava, 3 ice) and the
+// slope-gradient brightness cap (0 subtle, 1 balanced, 2 vivid). No-op on
+// 1-bit displays.
+void fdf_set_style(int theme, int relief);
 // Snapshot current (interpolated) altitudes into z_from, write the new time
 // into z_to and reset morph so an animation can play.
 void fdf_model_set_time(FdfModel *m, int hours, int minutes);

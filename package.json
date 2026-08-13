@@ -2,9 +2,13 @@
   "name": "fdf-time",
   "author": "asebrech",
   "version": "1.0.7",
-  "keywords": ["pebble-app"],
+  "keywords": [
+    "pebble-app"
+  ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "@rebble/clay": "^1.0.10"
+  },
   "pebble": {
     "displayName": "FdF Time",
     "uuid": "8500fb9e-14bb-4d54-a0e1-6fb8b981530e",
@@ -22,7 +26,15 @@
     "watchapp": {
       "watchface": true
     },
-    "messageKeys": [],
+    "capabilities": ["configurable"],
+    "messageKeys": [
+      "Theme",
+      "WaveMode",
+      "Relief",
+      "Splash42",
+      "ShakeOrbit",
+      "BtVibe"
+    ],
     "resources": {
       "media": []
     }

@@ -29,24 +29,55 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 #endif
 
 #if defined(PBL_COLOR)
-// Altitude palette, indexed by z (0..FDF_Z_TOP): the classic FdF terrain
-// ramp — deep blue lowlands through cyan/green midlands to warm peaks.
-// Edges keyed on their LOWER endpoint (see hierarchy note below), so digit
-// walls stay at the dark end and holes remain readable, while a morphing
-// plateau sweeps the whole ramp on its way up.
-static const GColor8 PALETTE[FDF_Z_TOP + 1] = {
-  {.argb = GColorOxfordBlueARGB8},     // 0 sea floor
-  {.argb = GColorDukeBlueARGB8},       // 1
-  {.argb = GColorBlueARGB8},           // 2
-  {.argb = GColorBlueMoonARGB8},       // 3
-  {.argb = GColorVividCeruleanARGB8},  // 4
-  {.argb = GColorCyanARGB8},           // 5
-  {.argb = GColorMalachiteARGB8},      // 6
-  {.argb = GColorSpringBudARGB8},      // 7
-  {.argb = GColorYellowARGB8},         // 8
-  {.argb = GColorChromeYellowARGB8},   // 9
-  {.argb = GColorOrangeARGB8},         // 10
+// Altitude palettes, indexed by z (0..FDF_Z_TOP): dark lowlands rising to
+// bright peaks, one ramp per user-selectable theme. Every ramp must keep
+// its low indices recessive (walls/floors) and save its brightest steps
+// for the top — the legibility hierarchy depends on it.
+static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
+  { // 0: Classic FdF — deep blue sea to warm peaks
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDukeBlueARGB8},
+    {.argb = GColorBlueARGB8},           {.argb = GColorBlueMoonARGB8},
+    {.argb = GColorVividCeruleanARGB8},  {.argb = GColorCyanARGB8},
+    {.argb = GColorMalachiteARGB8},      {.argb = GColorSpringBudARGB8},
+    {.argb = GColorYellowARGB8},         {.argb = GColorChromeYellowARGB8},
+    {.argb = GColorOrangeARGB8},
+  },
+  { // 1: Matrix — phosphor greens
+    {.argb = GColorDarkGreenARGB8},      {.argb = GColorDarkGreenARGB8},
+    {.argb = GColorMayGreenARGB8},       {.argb = GColorMayGreenARGB8},
+    {.argb = GColorKellyGreenARGB8},     {.argb = GColorGreenARGB8},
+    {.argb = GColorMalachiteARGB8},      {.argb = GColorScreaminGreenARGB8},
+    {.argb = GColorSpringBudARGB8},      {.argb = GColorMintGreenARGB8},
+    {.argb = GColorMintGreenARGB8},
+  },
+  { // 2: Lava — embers to sun
+    {.argb = GColorBulgarianRoseARGB8},  {.argb = GColorDarkCandyAppleRedARGB8},
+    {.argb = GColorDarkCandyAppleRedARGB8}, {.argb = GColorRedARGB8},
+    {.argb = GColorFollyARGB8},          {.argb = GColorSunsetOrangeARGB8},
+    {.argb = GColorOrangeARGB8},         {.argb = GColorChromeYellowARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorYellowARGB8},
+    {.argb = GColorIcterineARGB8},
+  },
+  { // 3: Ice — polar blues to white
+    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDukeBlueARGB8},
+    {.argb = GColorCobaltBlueARGB8},     {.argb = GColorBlueMoonARGB8},
+    {.argb = GColorPictonBlueARGB8},     {.argb = GColorVividCeruleanARGB8},
+    {.argb = GColorElectricBlueARGB8},   {.argb = GColorCelesteARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorWhiteARGB8},
+    {.argb = GColorWhiteARGB8},
+  },
 };
+#define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))
+
+static const GColor8 *s_palette = PALETTES[0];
+// Slope-gradient brightness cap (palette index): the knob behind the
+// "relief intensity" setting. See the cap comment in fdf_draw.
+static int s_grad_cap = 4;
+
+void fdf_set_style(int theme, int relief) {
+  s_palette = PALETTES[(unsigned)theme < PALETTE_COUNT ? theme : 0];
+  s_grad_cap = relief <= 0 ? 2 : relief >= 2 ? 6 : 4;
+}
 
 // Rolling terrain in the bleed ring: overlapping sine swells, capped low
 // enough (z<=6, cool palette colors only) that the white digit plateaus
@@ -67,6 +98,11 @@ static uint16_t prv_terrain8(int x, int y, int32_t phase) {
               sin_lookup(((2 * x + y) * TRIG_MAX_ANGLE) / 13 + 2 * phase);
   return ((v + 3 * TRIG_MAX_RATIO) * (TERRAIN_Z_MAX << 8)) /
          (6 * TRIG_MAX_RATIO);
+}
+#else
+void fdf_set_style(int theme, int relief) {
+  (void)theme;
+  (void)relief;
 }
 #endif
 
@@ -284,15 +320,16 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
               GPoint q1 = GPoint(pa.x + (pb.x - pa.x) * (s + 1) / steps,
                                  pa.y + (pb.y - pa.y) * (s + 1) / steps);
               int si = ia + di * (2 * s + 1) / (2 * steps);
-              // Cap slope gradients at VividCerulean: brighter segments
+              // Cap slope gradients partway up the ramp (user-tunable via
+              // the relief setting; default index 4): brighter segments
               // right under the white rims read as fuzzy thick strokes and
               // wreck glanceability (tried Malachite: green tips doubled
               // the rims; warm colors were worse still). The warm ramp
               // stays reserved for the morph sweep (equal-endpoint edges).
-              if (si > 4) {
-                si = 4;
+              if (si > s_grad_cap) {
+                si = s_grad_cap;
               }
-              GColor sc = (GColor)PALETTE[si];
+              GColor sc = (GColor)s_palette[si];
               if (!gcolor_equal(sc, last)) {
                 graphics_context_set_stroke_color(ctx, sc);
                 last = sc;
@@ -301,7 +338,7 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
             }
             continue;
           }
-          c = (GColor)PALETTE[ia];
+          c = (GColor)s_palette[ia];
         }
 #else
         uint16_t z_here = s_z8[y][x];
