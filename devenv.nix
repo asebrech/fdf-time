@@ -67,7 +67,9 @@ in
     # so the whole toolchain is self-contained and disposable.
     UV_TOOL_DIR = "${config.env.DEVENV_STATE}/uv/tools";
     UV_TOOL_BIN_DIR = "${config.env.DEVENV_STATE}/uv/bin";
-    UV_PYTHON_INSTALL_DIR = "${config.env.DEVENV_STATE}/uv/python";
+    # Keep uv's Pythons OUT of the project: the Pebble SDK's global venv
+    # (~/.local/share/pebble-sdk) symlinks this interpreter, and a
+    # project-local path breaks it whenever the project directory moves.
   };
 
   # `pebble` transparently proxies into the FHS environment.
