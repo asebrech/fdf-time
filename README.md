@@ -5,6 +5,10 @@ wireframe heightmap — a tribute to École 42's **FdF** ("fil de fer") project,
 whose demo map extrudes "42" from a flat terrain. Here, the terrain grows the
 current time instead, refreshed every minute.
 
+**Get it:** [Pebble Appstore](https://apps.repebble.com/0e2670c1adae469783030d49)
+(new Pebble app) · [Rebble store](https://apps.rebble.io/en_US/application/6a7dcbb1a2b290000911d59c)
+(legacy ecosystem)
+
 <img src="docs/boot-emery.gif" alt="Boot animation: the terrain grows into 42, then morphs into the time" width="200">
 
 | basalt (color) | emery (real Pebble Time 2) | diorite (1-bit) | chalk (round) |

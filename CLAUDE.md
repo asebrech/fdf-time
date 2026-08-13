@@ -43,6 +43,16 @@ Run with the pebble-tool venv python inside the FHS env
   rollover, orbit GIFs, then `_steady.png`.
 - ALWAYS verify every GIF with a contact sheet before uploading
   (`ffmpeg -i x.gif -vf "select=not(mod(n\,5)),scale=60:-1,tile=13x1"`).
+- `cdp.py` — minimal Chrome DevTools Protocol driver used to operate store
+  web UIs when no API exists (Rebble dev-portal, rePebble dashboard). Launch
+  Brave detached with `setsid nohup brave --remote-debugging-port=9222
+  --remote-allow-origins='*' --user-data-dir=<scratch>/brave-profile <url> &`,
+  let the user log in, then drive: `cdp.py screenshot/navigate/eval-file/
+  upload/click`. Gotchas: pass JS via eval-file (shell quoting mangles inline
+  JS); some portal buttons are CSS-rendered and invisible to DOM text search —
+  use `click <x> <y> <screenshot_width>` with screenshot-pixel coords; the
+  final publish-type click belongs to the user (Claude Code's classifier
+  rightly blocks it). Wipe the profile dir when done (it holds a session).
 - Zombie emulators cause `Connection refused`: clean with
   `pebble-fhs bash -c 'pkill -9 -f qemu-pebble; pkill -9 -f pypkjs; rm -f /tmp/pb-emulator.json'`
   (the state file lives in the FHS env's private /tmp).
