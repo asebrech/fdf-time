@@ -15,7 +15,10 @@ static const uint8_t DIGIT_FONT[10][DIGIT_FONT_ROWS] = {
   {0b101, 0b101, 0b111, 0b001, 0b001},  // 4
   {0b111, 0b100, 0b111, 0b001, 0b111},  // 5
   {0b111, 0b100, 0b111, 0b101, 0b111},  // 6
-  {0b111, 0b001, 0b001, 0b010, 0b010},  // 7
+  // NB: strokes must move between columns orthogonally, never diagonally —
+  // corner-touching cells share no edge in the plateau wireframe and render
+  // as disconnected floating blocks. Hence the straight-legged 7.
+  {0b111, 0b001, 0b001, 0b001, 0b001},  // 7
   {0b111, 0b101, 0b111, 0b101, 0b111},  // 8
   {0b111, 0b101, 0b111, 0b001, 0b111},  // 9
 };
