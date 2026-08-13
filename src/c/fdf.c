@@ -10,10 +10,10 @@
 #define DIGIT_H (DIGIT_FONT_ROWS * 2)   // 10
 #define DIGIT_GAP 2
 #define ROW_GAP 3
-// FDF_COLS = 2*BORDER + 2*DIGIT_W + DIGIT_GAP = 16
-// FDF_ROWS = 2*BORDER + 2*DIGIT_H + ROW_GAP  = 25
-
-#define COS30_10 887  // cos(30 deg) * 1024
+// Inner region: 2*BORDER + 2*DIGIT_W + DIGIT_GAP = 16 cols,
+//               2*BORDER + 2*DIGIT_H + ROW_GAP  = 25 rows.
+#define INNER_COLS (FDF_COLS - 2 * FDF_BLEED)
+#define INNER_ROWS (FDF_ROWS - 2 * FDF_BLEED)
 // Extrusion height: FDF_Z_TOP maps to ~1.25 cell spacings — tall enough to
 // pop, low enough that plateau tops don't occlude the row behind them.
 #define Z_NUM 1
@@ -37,8 +37,9 @@ static void prv_place_digit(uint8_t z[FDF_ROWS][FDF_COLS], int digit,
 }
 
 static void prv_place_pair(uint8_t z[FDF_ROWS][FDF_COLS], int value, int row0) {
-  prv_place_digit(z, value / 10, BORDER, row0);
-  prv_place_digit(z, value % 10, BORDER + DIGIT_W + DIGIT_GAP, row0);
+  int col0 = FDF_BLEED + BORDER;
+  prv_place_digit(z, value / 10, col0, FDF_BLEED + row0);
+  prv_place_digit(z, value % 10, col0 + DIGIT_W + DIGIT_GAP, FDF_BLEED + row0);
 }
 
 static uint16_t prv_z8_at(const FdfModel *m, int y, int x) {
@@ -60,15 +61,32 @@ static void prv_snapshot_current(FdfModel *m) {
 void fdf_model_init(FdfModel *m, GRect bounds) {
   memset(m, 0, sizeof(*m));
 
-  // Auto-fit zoom: the projected width spans ((cols-1)+(rows-1)) * cos30
-  // cells, the height half that (sin30 = 1/2) plus the extrusion.
-  int span = (FDF_COLS - 1) + (FDF_ROWS - 1);
-  int margin = PBL_IF_ROUND_ELSE(16, 2);
+  int margin = PBL_IF_ROUND_ELSE(10, 2);
   int avail_x = bounds.size.w - 2 * margin;
-  int avail_y = bounds.size.h - 2 * margin;
-  int32_t zx = ((int32_t)avail_x << 18) / (span * COS30_10);
-  int32_t zy = ((int32_t)(avail_y - 12) << 9) / span;  // ~12 px for extrusion
-  m->zoom8 = zx < zy ? zx : zy;
+  int avail_y = bounds.size.h - 2 * margin - 14;  // ~14 px extrusion room
+
+  // Trimetric projection: the digit-row axis gets a gentle 22 deg slope
+  // (readable baseline; the classic 30 deg iso tilts digits more than
+  // needed), while the HH/MM stack axis is steeper so the model spends the
+  // screen's height instead of letterboxing. The stack angle is chosen by
+  // trying candidates and keeping whichever maximizes the fitted zoom.
+  m->ax_cos = cos_lookup(DEG_TO_TRIGANGLE(22)) >> 6;  // 1024-scale
+  m->ax_sin = sin_lookup(DEG_TO_TRIGANGLE(22)) >> 6;
+  m->zoom8 = 0;
+  for (int deg = 45; deg <= 70; deg += 5) {
+    int32_t yc = cos_lookup(DEG_TO_TRIGANGLE(deg)) >> 6;
+    int32_t ys = sin_lookup(DEG_TO_TRIGANGLE(deg)) >> 6;
+    int32_t span_w = (INNER_COLS - 1) * m->ax_cos + (INNER_ROWS - 1) * yc;
+    int32_t span_h = (INNER_COLS - 1) * m->ax_sin + (INNER_ROWS - 1) * ys;
+    int32_t zx = ((int32_t)avail_x << 18) / span_w;
+    int32_t zy = ((int32_t)avail_y << 18) / span_h;
+    int32_t zoom = zx < zy ? zx : zy;
+    if (zoom > m->zoom8) {
+      m->zoom8 = zoom;
+      m->ay_cos = yc;
+      m->ay_sin = ys;
+    }
+  }
 
   m->center = GPoint(bounds.origin.x + bounds.size.w / 2,
                      bounds.origin.y + bounds.size.h / 2);
@@ -82,7 +100,7 @@ void fdf_model_set_time(FdfModel *m, int hours, int minutes) {
 
 void fdf_model_set_demo42(FdfModel *m) {
   prv_snapshot_current(m);
-  prv_place_pair(m->z_to, 42, (FDF_ROWS - DIGIT_H) / 2);
+  prv_place_pair(m->z_to, 42, (INNER_ROWS - DIGIT_H) / 2);
 }
 
 // Edge classes drive the visual hierarchy. Plateau-top edges (both ends
@@ -108,8 +126,10 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
       int32_t ry8 = (fx8 * sinv + fy8 * cosv) >> 16;
       int32_t z8 = prv_z8_at(m, y, x);
 
-      int32_t px = ((((rx8 - ry8) * m->zoom8) >> 12) * COS30_10) >> 14;
-      int32_t py = (((rx8 + ry8) >> 1) * m->zoom8) >> 16;
+      int32_t sx8 = (rx8 * m->zoom8) >> 12;
+      int32_t sy8 = (ry8 * m->zoom8) >> 12;
+      int32_t px = (sx8 * m->ax_cos - sy8 * m->ay_cos) >> 14;
+      int32_t py = (sx8 * m->ax_sin + sy8 * m->ay_sin) >> 14;
       py -= (z8 * zheight8) >> 16;
 
       s_pts[y][x] = GPoint(m->center.x + px, m->center.y + py);
@@ -145,10 +165,10 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
           c = GColorWhite;
           w = 3;
         } else if (is_ground) {
-          // Base mesh: keep only the plateau perimeter.
-          bool perimeter = dir == 0 ? (y == 0 || y == FDF_ROWS - 1)
-                                    : (x == 0 || x == FDF_COLS - 1);
-          if (!perimeter) {
+          // Base mesh at half density: with full-screen cells it reads as a
+          // recessive texture instead of noise.
+          bool sparse_keep = (dir == 0 ? y : x) % 2 == 0;
+          if (!sparse_keep) {
             continue;
           }
           c = GColorWhite;

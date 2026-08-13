@@ -26,8 +26,11 @@ Features:
 
 Pure integer math, no floats — friendly to the FPU-less Cortex-M3:
 
-- Isometric projection exploits sin(30°) = ½ exactly:
-  `py = ((x + y) >> 1) - z`, `px = ((x - y) * 887) >> 10` (cos 30° ≈ 887/1024).
+- Trimetric projection tuned for a portrait watch screen: the digit-row axis
+  slopes a gentle 22° (readable baseline), the HH/MM stack axis is picked at
+  init (~60-70°) to fill the screen height, and a terrain "bleed" ring
+  overflows the edges so the mesh reaches the corners. All axes are
+  1024-scale fixed-point vectors.
 - Rotation uses the SDK's `sin_lookup`/`cos_lookup` fixed-point trig.
 - Time digits come from a 3×5 bitmap font scaled ×2 into a 16×25 heightmap;
   the whole transform chain (center → rotate → project) recomputes from the

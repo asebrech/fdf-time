@@ -25,11 +25,12 @@ via emulator screenshot.
 
 ## Architecture
 
-- `src/c/fdf.c` / `fdf.h` — the core: a 16×25 heightmap (`FdfModel`) with
-  `z_from`/`z_to` altitude grids and a `morph` progress for animation;
-  integer-only isometric pipeline (center → z-rotate via
-  `sin_lookup`/`cos_lookup` → project with `sin30 = 1/2`,
-  `cos30 ≈ 887/1024`); wireframe drawn right+bottom-neighbor with a visual
+- `src/c/fdf.c` / `fdf.h` — the core: a heightmap (`FdfModel`, inner 16×25
+  digit region + bleed ring) with `z_from`/`z_to` altitude grids and a
+  `morph` progress for animation; integer-only trimetric pipeline (center →
+  z-rotate via `sin_lookup`/`cos_lookup` → project along two independent
+  1024-scale axis vectors chosen at init to fill the screen);
+  wireframe drawn right+bottom-neighbor with a visual
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
   different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
@@ -53,8 +54,14 @@ via emulator screenshot.
   digit holes/counters readable (walls recede instead of filling them).
 - 1-cell-thick digit strokes (sharp ridges) were tried and are NOT legible;
   2-cell plateaus are the minimum.
-- On 1-bit displays, walls and interior base mesh are dropped entirely and
-  tops drawn at stroke width 3 — thin walls refill the digit holes.
+- On 1-bit displays, walls are dropped entirely, the base mesh is halved in
+  density, and tops drawn at stroke width 3 — thin walls refill the digit
+  holes.
+- Classic 30° iso letterboxes badly on a portrait screen (~25% of pixels
+  used); a single aspect-matched camera angle fills it but tilts the
+  reading baseline as steeply as the angle itself. The fix is trimetric:
+  digit-row axis at a gentle 22°, stack axis steep and auto-picked, plus a
+  bleed ring of terrain overflowing the screen edges.
 
 ## Platform handling
 
