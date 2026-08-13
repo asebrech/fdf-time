@@ -47,6 +47,20 @@ Run with the pebble-tool venv python inside the FHS env
   `pebble-fhs bash -c 'pkill -9 -f qemu-pebble; pkill -9 -f pypkjs; rm -f /tmp/pb-emulator.json'`
   (the state file lives in the FHS env's private /tmp).
 
+## Versioning policy (agreed with the user, 2026-08-13)
+
+- GitHub tags are the source of truth: bump package.json + tag vX.Y.Z ONLY
+  for watch-code changes, and push the same number to BOTH stores (rePebble
+  release API + Rebble dev-portal release).
+- Store listing changes (screenshots, GIFs, banner, description) must NOT
+  bump the version: use the store web UIs (rePebble dashboard, Rebble
+  dev-portal edit) — drivable via Brave + tools-style CDP if needed.
+- ALWAYS `rm -rf build && pebble build` after a version bump: waf does not
+  regenerate the appinfo versionLabel from package.json alone (1.0.5/1.0.6
+  shipped mislabeled 1.0.4 pbws this way).
+- History note: store versions 1.0.5/1.0.6 were listing-only pushes from
+  before this policy; everything converged at v1.0.7.
+
 ## Architecture
 
 - `src/c/fdf.c` / `fdf.h` — the core: a heightmap (`FdfModel`, inner 16×25
