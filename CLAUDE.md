@@ -73,20 +73,27 @@ Run with the pebble-tool venv python inside the FHS env
 
 ## Architecture
 
-- `src/c/fdf.c` / `fdf.h` — the core: a heightmap (`FdfModel`, inner 16×25
-  digit region + bleed ring) with `z_from`/`z_to` altitude grids and a
+- `src/c/fdf.c` / `fdf.h` — the core: a heightmap (`FdfModel`, inner digit
+  region + bleed ring; the MM pair is staggered `FDF_STAGGER` cells right of
+  HH to cancel the trimetric lean) with `z_from`/`z_to` altitude grids and a
   `morph` progress for animation; integer-only trimetric pipeline (center →
   z-rotate via `sin_lookup`/`cos_lookup` → project along two independent
-  1024-scale axis vectors chosen at init to fill the screen);
-  wireframe drawn right+bottom-neighbor with a visual
+  1024-scale axis vectors chosen at init; zoom is fitted to the DIGIT
+  bounding-box corners only — border and bleed ring intentionally clip past
+  the screen edges); wireframe drawn right+bottom-neighbor with a visual
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
-  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`).
+  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, an
+  11-color altitude palette plus a rolling terrain swell in the bleed ring,
+  recomputed each frame from `wave_phase` (fractional heights, capped at
+  z=6 so digits stay the foreground).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map.
 - `src/c/main.c` — lifecycle: splash shows "42" then morphs to the time;
-  `MINUTE_UNIT` tick triggers a morph `Animation`; `accel_tap_service`
+  minute boundaries trigger a morph `Animation`; `accel_tap_service`
   triggers a full-orbit spin `Animation` (progress maps 1:1 to
-  `TRIG_MAX_ANGLE`).
+  `TRIG_MAX_ANGLE`). Color platforms tick `SECOND_UNIT` to advance
+  `wave_phase` (one swell wavelength per 30 s); 1-bit stays on
+  `MINUTE_UNIT` — no terrain there, and second-ticking wastes battery.
 - `package.json` — Pebble manifest under the `"pebble"` key: UUID,
   `targetPlatforms`, `watchapp.watchface: true`, `resources.media`.
 - `wscript` — standard Pebble waf template; rarely needs editing.
@@ -99,8 +106,20 @@ Run with the pebble-tool venv python inside the FHS env
 - Antialiasing is ON at the current ~6 px/cell density and looks good; it
   was OFF at the earlier ~4 px/cell density where it smeared 1 px lines into
   noise. If the grid ever gets denser, revisit.
-- Edge styling keys off the LOWER endpoint altitude: that is what keeps
-  digit holes/counters readable (walls recede instead of filling them).
+- Edge styling in the digit region keys off the LOWER endpoint altitude:
+  that is what keeps digit holes/counters readable (walls recede instead of
+  filling them). Terrain-ring edges key off the HIGHER endpoint so crests
+  light up. The crest-vs-wall decision must be STRUCTURAL (both endpoints
+  in the bleed ring = terrain), never altitude-based: an altitude threshold
+  made rising digits' walls crest-glow then snap dark mid-climb — a
+  screen-wide flash at every minute change.
+- Cells morphing DOWN take their destination color immediately (`s_ck8`):
+  old digits melt away in base blues. Coloring them by current altitude
+  made the whole old time flash back through yellow/green at morph start
+  (ease-out makes the first 100 ms cover most of the fall).
+- `wave_phase` must advance continuously from window load (ticks subscribed
+  during the splash, phase seeded from `tm_sec`); subscribing only after
+  the splash froze the swell and then teleported it at first tick.
 - 1-cell-thick digit strokes (sharp ridges) were tried and are NOT legible;
   2-cell plateaus are the minimum.
 - On 1-bit displays, walls are dropped entirely, the base mesh is halved in

@@ -7,8 +7,15 @@
 
 // Inner region (digits + 1-cell border) plus a "bleed" ring of terrain that
 // intentionally projects past the screen edges so the mesh fills the corners.
-#define FDF_BLEED 3
-#define FDF_COLS (16 + 2 * FDF_BLEED)
+// The MM pair is staggered right of HH: it cancels the trimetric lean (rows
+// project down-LEFT), stacking the pairs vertically in screen space so the
+// digit bounding box shrinks and the fitted zoom grows.
+// Color displays get a wide ring (the swell needs room and the zoom now
+// clips it at the edges); 1-bit keeps the narrow one — flat base, and
+// aplite's RAM is tight.
+#define FDF_BLEED PBL_IF_COLOR_ELSE(6, 3)
+#define FDF_STAGGER 6
+#define FDF_COLS (16 + FDF_STAGGER + 2 * FDF_BLEED)
 #define FDF_ROWS (25 + 2 * FDF_BLEED)
 #define FDF_Z_TOP 10  // altitude of extruded digit cells, as in 42.fdf
 
@@ -17,6 +24,7 @@ typedef struct {
   uint8_t z_to[FDF_ROWS][FDF_COLS];    // altitudes being morphed towards
   uint16_t morph;                      // 0..65535 progress from z_from to z_to
   int32_t angle;                       // TRIG_MAX_ANGLE units; 0 = canonical view
+  int32_t wave_phase;                  // terrain swell phase (color only)
   int32_t zoom8;                       // pixels per cell, 8-bit fraction
   // Trimetric axes, 1024-scale: the grid x axis (digit rows) projects along
   // (ax_cos, ax_sin), the y axis (HH/MM stack) along (-ay_cos, ay_sin).

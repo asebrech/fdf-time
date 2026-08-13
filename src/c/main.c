@@ -99,13 +99,23 @@ static void prv_show_time(void) {
 }
 
 static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  prv_show_time();
+  // During the splash the 42 owns the stage: hold the time morph until
+  // prv_splash_done plays it (the swell below still rolls).
+  if ((units_changed & MINUTE_UNIT) && !s_splash_timer) {
+    prv_show_time();
+  }
+#if defined(PBL_COLOR)
+  // The terrain swell rolls with the seconds: one wavelength every 30 s,
+  // continuous across the minute boundary. 1-bit has no terrain and stays
+  // on minute ticks (second-ticking a full redraw would waste battery).
+  s_model.wave_phase = tick_time->tm_sec * (TRIG_MAX_ANGLE / 30);
+  layer_mark_dirty(s_layer);
+#endif
 }
 
 static void prv_splash_done(void *data) {
   s_splash_timer = NULL;
   prv_show_time();
-  tick_timer_service_subscribe(MINUTE_UNIT, prv_tick_handler);
 }
 
 // --- window lifecycle ---
@@ -120,10 +130,21 @@ static void prv_window_load(Window *window) {
 
   fdf_model_init(&s_model, bounds);
 
-  // Homage splash: the original 42.fdf, then morph into the time.
+#if defined(PBL_COLOR)
+  // Seed the swell phase from the wall clock so the first second tick
+  // continues the motion instead of teleporting the waves.
+  time_t now = time(NULL);
+  s_model.wave_phase = localtime(&now)->tm_sec * (TRIG_MAX_ANGLE / 30);
+#endif
+
+  // Homage splash: the original 42.fdf, then morph into the time. Ticks are
+  // subscribed right away so the swell rolls during the splash too; the
+  // handler holds back the time morph until the splash is done.
   fdf_model_set_demo42(&s_model);
   prv_start_morph();
   s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  tick_timer_service_subscribe(PBL_IF_COLOR_ELSE(SECOND_UNIT, MINUTE_UNIT),
+                               prv_tick_handler);
 
   accel_tap_service_subscribe(prv_tap_handler);
 }
