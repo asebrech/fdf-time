@@ -1,53 +1,141 @@
 #include <pebble.h>
+#include "fdf.h"
+
+#define MORPH_DURATION_MS 700
+#define SPIN_DURATION_MS 1400
+#define SPLASH_MS 1500
 
 static Window *s_window;
-static TextLayer *s_time_layer;
-static TextLayer *s_date_layer;
+static Layer *s_layer;
+static FdfModel s_model;
+static Animation *s_morph_anim;
+static Animation *s_spin_anim;
+static AppTimer *s_splash_timer;
 
-static void prv_update_time(void) {
-  time_t temp = time(NULL);
-  struct tm *tick_time = localtime(&temp);
+static void prv_update_proc(Layer *layer, GContext *ctx) {
+  // AA smears 1 px lines at this wireframe density — crisp beats smooth here.
+  graphics_context_set_antialiased(ctx, false);
+  fdf_draw(&s_model, ctx);
+}
 
-  static char s_time_buffer[8];
-  strftime(s_time_buffer, sizeof(s_time_buffer),
-           clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
-  text_layer_set_text(s_time_layer, s_time_buffer);
+// --- morph animation (altitudes z_from -> z_to) ---
 
-  static char s_date_buffer[16];
-  strftime(s_date_buffer, sizeof(s_date_buffer), "%a %d %b", tick_time);
-  text_layer_set_text(s_date_layer, s_date_buffer);
+static void prv_morph_update(Animation *anim, AnimationProgress p) {
+  s_model.morph = p > 65535 ? 65535 : p;
+  layer_mark_dirty(s_layer);
+}
+
+static void prv_morph_stopped(Animation *anim, bool finished, void *ctx) {
+  s_morph_anim = NULL;
+  s_model.morph = 65535;
+  layer_mark_dirty(s_layer);
+}
+
+static const AnimationImplementation MORPH_IMPL = {
+  .update = prv_morph_update,
+};
+
+static void prv_start_morph(void) {
+  if (s_morph_anim) {
+    animation_unschedule(s_morph_anim);
+  }
+  s_morph_anim = animation_create();
+  animation_set_duration(s_morph_anim, MORPH_DURATION_MS);
+  animation_set_curve(s_morph_anim, AnimationCurveEaseOut);
+  animation_set_implementation(s_morph_anim, &MORPH_IMPL);
+  animation_set_handlers(s_morph_anim, (AnimationHandlers) {
+    .stopped = prv_morph_stopped,
+  }, NULL);
+  animation_schedule(s_morph_anim);
+}
+
+// --- spin animation (full orbit on wrist flick, the FdF rotation bonus) ---
+
+static void prv_spin_update(Animation *anim, AnimationProgress p) {
+  // TRIG_MAX_ANGLE == 0x10000, so progress maps directly to one full turn.
+  s_model.angle = p;
+  layer_mark_dirty(s_layer);
+}
+
+static void prv_spin_stopped(Animation *anim, bool finished, void *ctx) {
+  s_spin_anim = NULL;
+  s_model.angle = 0;
+  layer_mark_dirty(s_layer);
+}
+
+static const AnimationImplementation SPIN_IMPL = {
+  .update = prv_spin_update,
+};
+
+static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
+  if (s_spin_anim) {
+    return;
+  }
+  s_spin_anim = animation_create();
+  animation_set_duration(s_spin_anim, SPIN_DURATION_MS);
+  animation_set_curve(s_spin_anim, AnimationCurveEaseInOut);
+  animation_set_implementation(s_spin_anim, &SPIN_IMPL);
+  animation_set_handlers(s_spin_anim, (AnimationHandlers) {
+    .stopped = prv_spin_stopped,
+  }, NULL);
+  animation_schedule(s_spin_anim);
+}
+
+// --- time handling ---
+
+static void prv_show_time(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  int hours = t->tm_hour;
+  if (!clock_is_24h_style()) {
+    hours = hours % 12;
+    if (hours == 0) {
+      hours = 12;
+    }
+  }
+  fdf_model_set_time(&s_model, hours, t->tm_min);
+  prv_start_morph();
 }
 
 static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  prv_update_time();
+  prv_show_time();
 }
 
+static void prv_splash_done(void *data) {
+  s_splash_timer = NULL;
+  prv_show_time();
+  tick_timer_service_subscribe(MINUTE_UNIT, prv_tick_handler);
+}
+
+// --- window lifecycle ---
+
 static void prv_window_load(Window *window) {
-  Layer *window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(window_layer);
+  Layer *root = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(root);
 
-  s_time_layer = text_layer_create(
-      GRect(0, PBL_IF_ROUND_ELSE(58, 52), bounds.size.w, 50));
-  text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer,
-                      fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
-  text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
+  s_layer = layer_create(bounds);
+  layer_set_update_proc(s_layer, prv_update_proc);
+  layer_add_child(root, s_layer);
 
-  s_date_layer = text_layer_create(
-      GRect(0, PBL_IF_ROUND_ELSE(112, 106), bounds.size.w, 30));
-  text_layer_set_background_color(s_date_layer, GColorClear);
-  text_layer_set_text_color(s_date_layer, GColorWhite);
-  text_layer_set_font(s_date_layer,
-                      fonts_get_system_font(FONT_KEY_GOTHIC_24));
-  text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
+  fdf_model_init(&s_model, bounds);
+
+  // Homage splash: the original 42.fdf, then morph into the time.
+  fdf_model_set_demo42(&s_model);
+  prv_start_morph();
+  s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+
+  accel_tap_service_subscribe(prv_tap_handler);
 }
 
 static void prv_window_unload(Window *window) {
-  text_layer_destroy(s_time_layer);
-  text_layer_destroy(s_date_layer);
+  if (s_splash_timer) {
+    app_timer_cancel(s_splash_timer);
+    s_splash_timer = NULL;
+  }
+  animation_unschedule_all();
+  tick_timer_service_unsubscribe();
+  accel_tap_service_unsubscribe();
+  layer_destroy(s_layer);
 }
 
 static void prv_init(void) {
@@ -58,13 +146,9 @@ static void prv_init(void) {
     .unload = prv_window_unload,
   });
   window_stack_push(s_window, true);
-
-  tick_timer_service_subscribe(MINUTE_UNIT, prv_tick_handler);
-  prv_update_time();
 }
 
 static void prv_deinit(void) {
-  tick_timer_service_unsubscribe();
   window_destroy(s_window);
 }
 

@@ -6,7 +6,7 @@
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "My Watchface",
+    "displayName": "FdF Time",
     "uuid": "8500fb9e-14bb-4d54-a0e1-6fb8b981530e",
     "sdkVersion": "3",
     "enableMultiJS": true,

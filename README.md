@@ -1,21 +1,48 @@
-# pebble-watchface
+# FdF Time
 
-A watchface for [Pebble](https://repebble.com/) smartwatches, built with the modern
-(2026, Core Devices) Pebble C SDK. Currently a clean minimal face: big time,
-date below, white on black.
+A [Pebble](https://repebble.com/) watchface that renders the time as a 3D
+wireframe heightmap in isometric projection — a tribute to École 42's **FdF**
+("fil de fer") project, whose demo map extrudes "42" from a flat terrain.
+Here, the terrain grows the current time instead, refreshed every minute.
 
-<img src="docs/screenshot-basalt.png" alt="Watchface running on the basalt emulator" width="180">
+| basalt (color) | emery (Pebble Time 2) | diorite (1-bit) | chalk (round) |
+|---|---|---|---|
+| ![basalt](docs/screenshot-basalt.png) | ![emery](docs/screenshot-emery.png) | ![diorite](docs/screenshot-diorite.png) | ![chalk](docs/screenshot-chalk.png) |
 
-Targets all current platforms: `aplite`, `basalt`, `chalk`, `diorite`, `emery`,
-`flint`, `gabbro` (Pebble Classic through Pebble Time 2 / Core Devices hardware).
+Features:
+
+- **HH / MM stacked** as flat-top plateaus (2-cell-thick strokes, exactly the
+  style of the original `42.fdf` map), on a wireframe terrain grid.
+- **Startup homage**: the face boots showing "42", then morphs into the time.
+- **Morph animation**: on each minute change, altitudes interpolate from the
+  old digits to the new ones — the terrain grows and recedes (~700 ms,
+  ease-out).
+- **Wrist-flick orbit**: a tap/flick spins the model through a full turn
+  (the FdF rotation bonus), then settles back to the canonical isometric view.
+- Runs on all 7 platforms: `aplite`, `basalt`, `chalk`, `diorite`, `emery`,
+  `flint`, `gabbro`.
+
+## How it works
+
+Pure integer math, no floats — friendly to the FPU-less Cortex-M3:
+
+- Isometric projection exploits sin(30°) = ½ exactly:
+  `py = ((x + y) >> 1) - z`, `px = ((x - y) * 887) >> 10` (cos 30° ≈ 887/1024).
+- Rotation uses the SDK's `sin_lookup`/`cos_lookup` fixed-point trig.
+- Time digits come from a 3×5 bitmap font scaled ×2 into a 16×25 heightmap;
+  the whole transform chain (center → rotate → project) recomputes from the
+  pristine grid every frame, FdF-style.
+- Legibility on a 144 px screen comes from visual hierarchy: plateau-top
+  edges (the digit outlines) are bright/bold, walls and the base mesh recede
+  (dark green on color displays; dropped or thinned on 1-bit displays).
 
 ## Dev environment (NixOS / Nix + devenv)
 
-The whole toolchain is reproducible via [devenv](https://devenv.sh/) and
+The toolchain is reproducible via [devenv](https://devenv.sh/) +
 [direnv](https://direnv.net/). The Pebble SDK ships prebuilt FHS binaries
 (ARM toolchain, QEMU emulator), so on NixOS every `pebble` command runs
-transparently inside a `buildFHSEnv` bubblewrap wrapper — no `nix-ld` or system
-configuration needed.
+transparently inside a `buildFHSEnv` bubblewrap wrapper — no `nix-ld` or
+system configuration needed.
 
 ### First-time setup
 
@@ -24,24 +51,17 @@ direnv allow        # or: devenv shell
 pebble-setup        # installs pebble-tool (via uv) + SDK core + ICU fix
 ```
 
-`pebble-setup` is a one-shot bootstrap. It installs everything under
-`.devenv/state/uv/` (project-local) and `~/.local/share/pebble-sdk/` (SDK core).
-
 ### Daily workflow
 
 ```sh
 pebble build                        # build the .pbw for all platforms
 pebble install --emulator basalt    # run in the QEMU emulator
+pebble emu-tap --emulator basalt    # trigger the orbit animation
 pebble screenshot --emulator basalt # grab a screenshot
-pebble logs --emulator basalt       # tail app logs
 pebble kill                         # stop emulators
 ```
 
-Emulator platform names: `aplite` (Pebble Classic), `basalt` (Pebble Time),
-`chalk` (Time Round), `diorite` (Pebble 2), `emery` (Time 2), `flint`
-(Core 2 Duo), `gabbro`.
-
-To install on a real watch through the phone app:
+To install on a real watch through the phone app's developer connection:
 
 ```sh
 pebble install --phone <PHONE_IP>
@@ -50,8 +70,10 @@ pebble install --phone <PHONE_IP>
 ## Project layout
 
 ```
-src/c/main.c     watchface source (C SDK)
-package.json     Pebble app manifest (uuid, platforms, resources)
+src/c/main.c     app lifecycle, tick handling, morph/spin animations
+src/c/fdf.c/.h   heightmap model, integer isometric pipeline, wireframe render
+src/c/digits.h   3x5 digit font
+package.json     Pebble app manifest (uuid, platforms)
 wscript          waf build script (standard Pebble template)
 devenv.nix       reproducible dev environment + FHS wrapper + pebble scripts
 .claude/skills/  Core Devices' pebble-watchface skill for Claude Code
@@ -59,12 +81,12 @@ devenv.nix       reproducible dev environment + FHS wrapper + pebble scripts
 
 ## Resources
 
+- [FdF subject](https://cdn.intra.42.fr/) — École 42 wireframe project (the inspiration)
 - [Pebble developer docs](https://developer.repebble.com/) — API reference, tutorials
-- [Watchface tutorial](https://developer.repebble.com/tutorials/watchface-tutorial/part1/)
-- [SDK installation guide](https://developer.repebble.com/sdk/)
+- [Framebuffer & drawing guide](https://developer.repebble.com/guides/graphics-and-animations/framebuffer-graphics/)
+- [kurval/42-fdf](https://github.com/kurval/42-fdf) — reference FdF implementation studied for the pipeline
 - [pebble-watchface-agent-skill](https://github.com/coredevices/pebble-watchface-agent-skill)
   (© Core Devices, vendored under `.claude/skills/`)
-- [Rebble Discord](https://rebble.io/discord) — community help
 
 ## Notes / gotchas
 
@@ -72,4 +94,5 @@ devenv.nix       reproducible dev environment + FHS wrapper + pebble scripts
   priority over the SDK's `arm-none-eabi-gcc`. The FHS wrapper unsets them.
 - The STPyV8 ICU seed (done by `pebble-setup`) works around a read-only
   `/usr/share` inside the FHS environment.
-- `build/` is disposable; `rm -rf build` for a clean rebuild.
+- Antialiasing is deliberately disabled: at this wireframe density, AA smears
+  1 px lines into noise. Crisp beats smooth.

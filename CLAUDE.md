@@ -1,8 +1,10 @@
 # CLAUDE.md
 
-Pebble smartwatch watchface written in C against the Pebble SDK (2026 Core
-Devices SDK, currently 4.33). Built with waf via `pebble-tool`, tested in the
-QEMU emulator. Dev environment is managed by devenv/direnv on NixOS.
+"FdF Time" — a Pebble watchface rendering the time as a 3D wireframe
+heightmap in isometric projection, in the style of École 42's FdF project.
+Written in C against the Pebble SDK (2026 Core Devices SDK, currently 4.33).
+Built with waf via `pebble-tool`, tested in the QEMU emulator. Dev
+environment is managed by devenv/direnv on NixOS.
 
 ## Commands
 
@@ -23,16 +25,36 @@ via emulator screenshot.
 
 ## Architecture
 
-- `src/c/main.c` — the entire watchface: one `Window`, `TextLayer`s for time
-  and date, `tick_timer_service_subscribe(MINUTE_UNIT, ...)` to refresh.
+- `src/c/fdf.c` / `fdf.h` — the core: a 16×25 heightmap (`FdfModel`) with
+  `z_from`/`z_to` altitude grids and a `morph` progress for animation;
+  integer-only isometric pipeline (center → z-rotate via
+  `sin_lookup`/`cos_lookup` → project with `sin30 = 1/2`,
+  `cos30 ≈ 887/1024`); wireframe drawn right+bottom-neighbor with a visual
+  hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
+  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`).
+- `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
+  strokes are 2-cell plateaus like the original 42.fdf map.
+- `src/c/main.c` — lifecycle: splash shows "42" then morphs to the time;
+  `MINUTE_UNIT` tick triggers a morph `Animation`; `accel_tap_service`
+  triggers a full-orbit spin `Animation` (progress maps 1:1 to
+  `TRIG_MAX_ANGLE`).
 - `package.json` — Pebble manifest under the `"pebble"` key: UUID,
-  `targetPlatforms`, `watchapp.watchface: true`, `resources.media` (fonts,
-  images). Adding a resource means declaring it here, then referencing the
-  generated `RESOURCE_ID_*` in C.
+  `targetPlatforms`, `watchapp.watchface: true`, `resources.media`.
 - `wscript` — standard Pebble waf template; rarely needs editing.
 - `devenv.nix` — defines the `pebble-fhs` FHS wrapper (the SDK's downloaded
   ARM toolchain/QEMU are FHS binaries that can't run bare on NixOS) and the
   `pebble` / `pebble-setup` wrapper scripts.
+
+## Rendering lessons already learned (don't regress these)
+
+- Antialiasing is OFF on purpose: at ~4 px/cell it smears 1 px lines into
+  noise.
+- Edge styling keys off the LOWER endpoint altitude: that is what keeps
+  digit holes/counters readable (walls recede instead of filling them).
+- 1-cell-thick digit strokes (sharp ridges) were tried and are NOT legible;
+  2-cell plateaus are the minimum.
+- On 1-bit displays, walls and interior base mesh are dropped entirely and
+  tops drawn at stroke width 3 — thin walls refill the digit holes.
 
 ## Platform handling
 
