@@ -27,6 +27,9 @@ let
         libjpeg
         alsa-lib
 
+        # appstore publishing: rollover GIF capture
+        ffmpeg
+
         # common runtime libs for the downloaded toolchain/python
         expat
         libffi

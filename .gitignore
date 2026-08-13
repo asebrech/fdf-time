@@ -17,3 +17,6 @@ dist/
 # Editor
 .vscode/
 .idea/
+
+# Appstore publish artifacts
+screenshots/
