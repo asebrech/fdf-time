@@ -89,7 +89,10 @@ Run with the pebble-tool venv python inside the FHS env
   foreground color for the plateau tops.
   Pebble is 4-levels-per-channel; ports pick the nearest VIVID hue, never
   naive rounding (pastels round to washed-out gray), with each theme's
-  signature accent on the wall tips (index 4). Plus a rolling terrain
+  signature accent on the wall tips (index 4). Placement rule: LARGE areas
+  (wall body 2-3, crests 5-6) take the scheme's saturated colors; pastels
+  (#AAAAFF-class) go in the morph sweep (7-10) only — on big areas they
+  read white and kill the tops' contrast. Plus a rolling terrain
   swell in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).

@@ -38,9 +38,12 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 // that keeps the scheme's hue identity (naive rounding turns pastel schemes
 // into washed-out gray).
 static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
-  { // 0: Catppuccin Mocha — night-lavender base, pastel accents
+  { // 0: Catppuccin Mocha — night-lavender base, pastel accents. Wall
+    // body stays on the dark overlays (#6c7086 -> Liberty) so the mauve
+    // tips and the tops keep their pop; pastels are for accents, not
+    // large areas.
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
-    {.argb = GColorLibertyARGB8},        {.argb = GColorBabyBlueEyesARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
     {.argb = GColorRichBrilliantLavenderARGB8}, {.argb = GColorPictonBlueARGB8},
     {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
@@ -63,13 +66,17 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
     {.argb = GColorSunsetOrangeARGB8},
   },
-  { // 3: Tokyo Night — deep navy, neon blue walls, city-light morph
+  { // 3: Tokyo Night — deep navy, neon blue walls, city-light morph.
+    // Large areas (wall body 2-3 = blue0 #3d59a1, crests 5-6 = cyan
+    // #7dcfff / teal #73daca) use the scheme's SATURATED blues; the pastel
+    // purple lives in the morph sweep — pastels on big areas read white
+    // and kill the tops' contrast.
     {.argb = GColorOxfordBlueARGB8},     {.argb = GColorOxfordBlueARGB8},
-    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
-    {.argb = GColorPictonBlueARGB8},     {.argb = GColorBabyBlueEyesARGB8},
+    {.argb = GColorCobaltBlueARGB8},     {.argb = GColorCobaltBlueARGB8},
+    {.argb = GColorPictonBlueARGB8},     {.argb = GColorElectricBlueARGB8},
     {.argb = GColorMediumSpringGreenARGB8}, {.argb = GColorSpringBudARGB8},
     {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
-    {.argb = GColorCelesteARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},
   },
   { // 4: Kanagawa — Hokusai wave: deep teal sea, autumn-gold crests
     {.argb = GColorMidnightGreenARGB8},  {.argb = GColorMidnightGreenARGB8},
