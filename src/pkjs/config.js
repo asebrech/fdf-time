@@ -14,15 +14,15 @@ module.exports = [
       {
         "type": "select",
         "messageKey": "Theme",
-        "defaultValue": "3",
+        "defaultValue": "0",
         "label": "Color theme",
         "options": [
-          { "label": "Catppuccin", "value": "0" },
-          { "label": "Gruvbox", "value": "1" },
-          { "label": "Nord", "value": "2" },
-          { "label": "Tokyo Night", "value": "3" },
+          { "label": "Tokyo Night", "value": "0" },
+          { "label": "Catppuccin", "value": "1" },
+          { "label": "Dracula", "value": "2" },
+          { "label": "Gruvbox", "value": "3" },
           { "label": "Kanagawa", "value": "4" },
-          { "label": "Dracula", "value": "5" }
+          { "label": "Nord", "value": "5" }
         ]
       },
       {

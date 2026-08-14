@@ -34,8 +34,8 @@ typedef struct {
 } FdfModel;
 
 void fdf_model_init(FdfModel *m, GRect bounds);
-// Select the altitude palette (0 catppuccin, 1 gruvbox, 2 nord,
-// 3 tokyo night, 4 kanagawa, 5 dracula) and whether walls draw per-line
+// Select the altitude palette (0 tokyo night, 1 catppuccin, 2 dracula,
+// 3 gruvbox, 4 kanagawa, 5 nord) and whether walls draw per-line
 // gradients (else one solid color per edge). No-op on 1-bit displays.
 void fdf_set_style(int theme, int gradient);
 // Snapshot current (interpolated) altitudes into z_from, write the new time

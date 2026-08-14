@@ -84,9 +84,11 @@ Run with the pebble-tool venv python inside the FHS env
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
   different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, six
   user-selectable 11-step altitude palettes — hand-quantized ports of
-  Catppuccin Mocha / Gruvbox / Nord / Tokyo Night (default — closest heir
-  to the original FdF blues) / Kanagawa / Dracula, each with a themed
-  foreground color for the plateau tops.
+  Tokyo Night (default — closest heir to the original FdF blues, listed
+  first) then alphabetically Catppuccin Mocha / Dracula / Gruvbox /
+  Kanagawa / Nord, each with a themed foreground color for the plateau
+  tops. Theme indices are PERSISTED on watches — never reorder after a
+  store release.
   Pebble is 4-levels-per-channel; ports pick the nearest VIVID hue, never
   naive rounding (pastels round to washed-out gray), with each theme's
   signature accent on the wall tips (index 4). Placement rules: theme

@@ -8,7 +8,7 @@
 // User settings, edited from the phone via Clay and persisted on the watch.
 #define SETTINGS_KEY 1
 typedef struct {
-  uint8_t theme;        // palette index, see fdf_set_style (3 = tokyo night)
+  uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
   uint8_t gradient;     // per-line wall gradients on/off
   bool splash42;        // play the "42" splash on launch
@@ -213,7 +213,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
 
 static void prv_load_settings(void) {
   s_settings = (Settings) {
-    .theme = 3,  // Tokyo Night — closest heir to the original FdF look
+    .theme = 0,  // Tokyo Night — closest heir to the original FdF look
     .wave_mode = 0,
     .gradient = 1,
     .splash42 = true,

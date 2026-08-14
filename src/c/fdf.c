@@ -41,8 +41,18 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 // "visible dark" (55-level channels; near-black floors made every theme
 // look alike: white digits over an invisible mesh). Indices 7-9 are the
 // morph sweep — each theme's most vivid accents, brightest last.
+// Order: the default first, then alphabetical.
 static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
-  { // 0: Catppuccin Mocha — violet night: purple floor, mauve wall tips,
+  { // 0: Tokyo Night (default) — blue on blue: night-blue floor, cobalt
+    // body, neon tips, teal crests, city-light sweep ending hot pink
+    {.argb = GColorDukeBlueARGB8},       {.argb = GColorDukeBlueARGB8},
+    {.argb = GColorCobaltBlueARGB8},     {.argb = GColorCobaltBlueARGB8},
+    {.argb = GColorPictonBlueARGB8},     {.argb = GColorElectricBlueARGB8},
+    {.argb = GColorMediumSpringGreenARGB8}, {.argb = GColorSpringBudARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},
+  },
+  { // 1: Catppuccin Mocha — violet night: purple floor, mauve wall tips,
     // sapphire/teal crests, sweep ending on the vivid red accent
     {.argb = GColorImperialPurpleARGB8}, {.argb = GColorImperialPurpleARGB8},
     {.argb = GColorLibertyARGB8},        {.argb = GColorPurpureusARGB8},
@@ -51,31 +61,22 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorMelonARGB8},          {.argb = GColorBrilliantRoseARGB8},
     {.argb = GColorRichBrilliantLavenderARGB8},
   },
-  { // 1: Gruvbox — retro warmth: olive floor, amber walls, golden sweep
+  { // 2: Dracula — purple floor, hot pink walls, green crests, sweep
+    // ending on the pastel purple
+    {.argb = GColorImperialPurpleARGB8}, {.argb = GColorDarkGrayARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
+    {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorScreaminGreenARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorRajahARGB8},          {.argb = GColorSunsetOrangeARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},
+  },
+  { // 3: Gruvbox — retro warmth: olive floor, amber walls, golden sweep
     {.argb = GColorArmyGreenARGB8},      {.argb = GColorArmyGreenARGB8},
     {.argb = GColorWindsorTanARGB8},     {.argb = GColorWindsorTanARGB8},
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorBrassARGB8},
     {.argb = GColorLimerickARGB8},       {.argb = GColorRajahARGB8},
     {.argb = GColorOrangeARGB8},         {.argb = GColorIcterineARGB8},
     {.argb = GColorPastelYellowARGB8},
-  },
-  { // 2: Nord — the deliberately soft one: gray polar floor, frost mids,
-    // aurora sweep. Palest of the six by identity.
-    {.argb = GColorDarkGrayARGB8},       {.argb = GColorDarkGrayARGB8},
-    {.argb = GColorCadetBlueARGB8},      {.argb = GColorCadetBlueARGB8},
-    {.argb = GColorBabyBlueEyesARGB8},   {.argb = GColorCelesteARGB8},
-    {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
-    {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
-    {.argb = GColorSunsetOrangeARGB8},
-  },
-  { // 3: Tokyo Night — blue on blue: night-blue floor, cobalt body, neon
-    // tips, teal crests, city-light sweep ending hot pink
-    {.argb = GColorDukeBlueARGB8},       {.argb = GColorDukeBlueARGB8},
-    {.argb = GColorCobaltBlueARGB8},     {.argb = GColorCobaltBlueARGB8},
-    {.argb = GColorPictonBlueARGB8},     {.argb = GColorElectricBlueARGB8},
-    {.argb = GColorMediumSpringGreenARGB8}, {.argb = GColorSpringBudARGB8},
-    {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
-    {.argb = GColorBabyBlueEyesARGB8},
   },
   { // 4: Kanagawa — Hokusai wave: deep teal sea, violet mid, crystal-blue
     // tips, autumn-gold crests
@@ -86,14 +87,14 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorPastelYellowARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 5: Dracula — purple floor, hot pink walls, green crests, sweep
-    // ending on the pastel purple
-    {.argb = GColorImperialPurpleARGB8}, {.argb = GColorDarkGrayARGB8},
-    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
-    {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorScreaminGreenARGB8},
-    {.argb = GColorCelesteARGB8},        {.argb = GColorPastelYellowARGB8},
-    {.argb = GColorRajahARGB8},          {.argb = GColorSunsetOrangeARGB8},
-    {.argb = GColorBabyBlueEyesARGB8},
+  { // 5: Nord — the deliberately soft one: gray polar floor, frost mids,
+    // aurora sweep. Palest of the six by identity.
+    {.argb = GColorDarkGrayARGB8},       {.argb = GColorDarkGrayARGB8},
+    {.argb = GColorCadetBlueARGB8},      {.argb = GColorCadetBlueARGB8},
+    {.argb = GColorBabyBlueEyesARGB8},   {.argb = GColorCelesteARGB8},
+    {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
+    {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
+    {.argb = GColorSunsetOrangeARGB8},
   },
 };
 #define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))
@@ -101,12 +102,12 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
 // Finished plateau tops take the theme's foreground ("text") color — the
 // warm schemes' creams quantize to PastelYellow, the cool ones to White.
 static const GColor8 TOPS[PALETTE_COUNT] = {
-  {.argb = GColorWhiteARGB8},         // Catppuccin text #cdd6f4
-  {.argb = GColorPastelYellowARGB8},  // Gruvbox fg #ebdbb2 (cream)
-  {.argb = GColorWhiteARGB8},         // Nord snow storm #d8dee9
   {.argb = GColorWhiteARGB8},         // Tokyo Night fg #c0caf5
-  {.argb = GColorPastelYellowARGB8},  // Kanagawa fujiWhite #dcd7ba
+  {.argb = GColorWhiteARGB8},         // Catppuccin text #cdd6f4
   {.argb = GColorWhiteARGB8},         // Dracula fg #f8f8f2
+  {.argb = GColorPastelYellowARGB8},  // Gruvbox fg #ebdbb2 (cream)
+  {.argb = GColorPastelYellowARGB8},  // Kanagawa fujiWhite #dcd7ba
+  {.argb = GColorWhiteARGB8},         // Nord snow storm #d8dee9
 };
 
 static const GColor8 *s_palette = PALETTES[0];
