@@ -347,11 +347,10 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         uint16_t ck_b = s_ck8[ny][nx];
         // Top threshold 9.5: the sweep's last color (index 9) stays on
         // screen through the slow ease-out finish — at 9.0 the sweep was
-        // cut before its final color ever showed. Tops draw at width 2 so
-        // digits separate structurally from the 1px wall/mesh lines.
+        // cut before its final color ever showed. (Width-2 tops were
+        // tried for digit/wall separation and rejected: too heavy.)
         if (ck_a >= (9 << 8) + 128 && ck_b >= (9 << 8) + 128) {
           c = (GColor)s_top;
-          w = 2;
         } else {
           int ia = ck_a >> 8;
           int ib = ck_b >> 8;

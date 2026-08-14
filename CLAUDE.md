@@ -94,11 +94,11 @@ Run with the pebble-tool venv python inside the FHS env
   in the scheme's dominant hue (55-level channels; near-black floors made
   every theme look identical), wall body 2-3 and crests 5-6 take the
   scheme's saturated colors; pastels (#AAAAFF-class) go in the morph
-  sweep (7-9, most vivid at 9) only. Tops draw at stroke width 2 (walls
-  and mesh at 1) — that width difference, not color alone, is what
-  separates digits from walls. Top threshold is 9.5 (not 9.0, which cut
-  the sweep before its final color; not 10.0 — the morph interpolation
-  never quite reaches 10<<8). Plus a rolling terrain
+  sweep (7-9, most vivid at 9) only. Tops stay at stroke width 1 like
+  everything else — width-2 tops were tried (digit/wall separation) and
+  rejected by the user as too heavy. Top threshold is 9.5 (not 9.0, which
+  cut the sweep before its final color; not 10.0 — the morph
+  interpolation never quite reaches 10<<8). Plus a rolling terrain
   swell in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).
