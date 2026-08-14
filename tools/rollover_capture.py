@@ -48,6 +48,12 @@ cmd.pebble = pebble
 time.sleep(5)
 ToolAppInstaller(pebble, pbw, quiet=True).install()
 time.sleep(3)  # let the boot splash finish
+import calendar, datetime
+from libpebble2.protocol.system import TimeMessage, SetUTC
+_now = datetime.datetime.now()
+_off = int((_now - datetime.datetime.utcnow()).total_seconds() // 60)
+pebble.send_packet(TimeMessage(message=SetUTC(unix_time=int(time.time()), utc_offset=_off, tz_name="Europe/Paris")))
+time.sleep(2)
 
 monitor_port = pebble.transport.qemu_monitor_port
 

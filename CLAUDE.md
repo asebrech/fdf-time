@@ -54,8 +54,26 @@ Run with the pebble-tool venv python inside the FHS env
   final publish-type click belongs to the user (Claude Code's classifier
   rightly blocks it). Wipe the profile dir when done (it holds a session).
 - Zombie emulators cause `Connection refused`: clean with
-  `pebble-fhs bash -c 'pkill -9 -f qemu-pebble; pkill -9 -f pypkjs; rm -f /tmp/pb-emulator.json'`
-  (the state file lives in the FHS env's private /tmp).
+  `pebble-fhs bash -c "pkill -9 -f 'qemu-[p]ebble'; pkill -9 -f 'py[p]kjs'; rm -f /tmp/pb-emulator.json"`
+  (the state file lives in the FHS env's private /tmp; the `[p]` bracket
+  keeps pkill from matching — and killing — its own enclosing shell).
+- rollover_capture.py sends an explicit SetUTC after install: without it,
+  aplite's QEMU sometimes never gets phone time sync and sits at 00:00,
+  producing a static "rollover". Verify every steady PNG is exactly the
+  platform's resolution before upload — one basalt screendump came out
+  148x172 (2px border) and Rebble rejects wrong dimensions.
+- Rebble dev-portal listing mechanics: 5 screenshots max / 1 min per
+  platform, ONE file per upload (multi-file selections silently take the
+  first), per-slot hidden file inputs — map them via the ORDERED
+  tabpanels under the Screenshots panel, never by find's labels. Banner
+  lives per-platform under the Banners tab. Recipe to replace a full set:
+  delete 4 of 5 old, upload the 4 new one-by-one, delete the last old.
+- rePebble (Aug 2026 migration): the legacy release API still publishes
+  pbw+notes+version, but SILENTLY IGNORES the screenshot fields and
+  can't touch the banner. The new "Pebble Developer Dashboard"
+  (developer.repebble.com/dashboard) is the intended manager; its
+  GitHub sign-in was failing ("Failed to create developer profile") —
+  contact appstore@rePebble.com when blocked.
 
 ## Versioning policy (agreed with the user, 2026-08-13)
 
