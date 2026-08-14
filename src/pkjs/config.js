@@ -47,6 +47,7 @@ module.exports = [
         "defaultValue": "0",
         "label": "Ocean animation",
         "options": [
+          { "label": "Silk (ultra-fluid, more battery)", "value": "3" },
           { "label": "Fluid (updates every second)", "value": "0" },
           { "label": "Eco (drifts once a minute)", "value": "1" },
           { "label": "Frozen", "value": "2" }

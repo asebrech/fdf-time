@@ -13,7 +13,8 @@
 #define PEEK_KEY 2
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
-  uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
+  uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift),
+                        // 2 frozen, 3 silk (continuous ~15 fps timer)
   uint8_t gradient;     // per-line wall gradients on/off
   uint8_t display_mode; // 0 classic HH/MM, 1 seconds (experimental)
   bool splash42;        // play the "42" splash on launch
@@ -40,6 +41,12 @@ static char s_hhmm[8];  // seconds mode: small HH:MM drawn above the scene
 // until a second flick. Entry shakes fire multiple taps, hence the debounce.
 static bool s_peeking;
 static uint64_t s_peek_entered_ms;
+// Silk wave mode: a repeating timer interpolates the swell phase between
+// seconds. ~15 fps is ample — the swell moves a fraction of a cell per
+// second, so the per-frame delta is sub-pixel smooth.
+static AppTimer *s_wave_timer;
+#define WAVE_FRAME_MS 66
+#define WAVE_PERIOD_MS 30000  // one wavelength / 30 s, same pace as Fluid
 
 static void prv_update_proc(Layer *layer, GContext *ctx) {
   // AA is fine at the current cell size (~6 px); it smeared into noise at
@@ -215,8 +222,9 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 #if defined(PBL_COLOR)
   // The terrain swell rolls with the phase: one wavelength every 30 ticks,
   // continuous across the minute boundary. Fluid mode ticks every second;
-  // eco mode drifts one step per minute; frozen keeps phase 0. 1-bit has
-  // no terrain and always stays on minute ticks.
+  // eco mode drifts one step per minute; frozen keeps phase 0; silk is
+  // driven by its own timer, not ticks. 1-bit has no terrain and always
+  // stays on minute ticks.
   if (s_settings.wave_mode == 0) {
     s_model.wave_phase = tick_time->tm_sec * (TRIG_MAX_ANGLE / 30);
   } else if (s_settings.wave_mode == 1) {
@@ -225,6 +233,16 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   layer_mark_dirty(s_layer);
 #endif
 }
+
+#if defined(PBL_COLOR)
+static void prv_wave_timer_cb(void *data) {
+  s_wave_timer = app_timer_register(WAVE_FRAME_MS, prv_wave_timer_cb, NULL);
+  uint64_t ms = prv_now_ms();
+  s_model.wave_phase =
+      (int32_t)((ms % WAVE_PERIOD_MS) * TRIG_MAX_ANGLE / WAVE_PERIOD_MS);
+  layer_mark_dirty(s_layer);
+}
+#endif
 
 static void prv_splash_done(void *data) {
   s_splash_timer = NULL;
@@ -268,6 +286,13 @@ static void prv_apply_settings(void) {
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 2) {
     s_model.wave_phase = 0;
+  }
+  if (s_wave_timer) {
+    app_timer_cancel(s_wave_timer);
+    s_wave_timer = NULL;
+  }
+  if (s_settings.wave_mode == 3) {
+    s_wave_timer = app_timer_register(WAVE_FRAME_MS, prv_wave_timer_cb, NULL);
   }
 #endif
   prv_subscribe_ticks();
@@ -394,6 +419,12 @@ static void prv_window_unload(Window *window) {
     s_splash_timer = NULL;
   }
   animation_unschedule_all();
+#if defined(PBL_COLOR)
+  if (s_wave_timer) {
+    app_timer_cancel(s_wave_timer);
+    s_wave_timer = NULL;
+  }
+#endif
   tick_timer_service_unsubscribe();
   accel_tap_service_unsubscribe();
   connection_service_unsubscribe();
