@@ -16,7 +16,7 @@ typedef struct {
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift),
                         // 2 frozen, 3 silk (continuous ~15 fps timer)
   uint8_t gradient;     // per-line wall gradients on/off
-  uint8_t display_mode; // 0 classic HH/MM, 1 seconds (experimental)
+  uint8_t display_mode; // 0 classic HH/MM terrain, 1 seconds SS terrain
   bool splash42;        // play the "42" splash on launch
   uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (reverts
                         // at the minute), 3 toggle seconds (sticky until the

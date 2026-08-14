@@ -38,7 +38,7 @@ module.exports = [
         "label": "Display mode",
         "options": [
           { "label": "Classic (HH:MM terrain)", "value": "0" },
-          { "label": "Seconds (experimental, drains battery)", "value": "1" }
+          { "label": "Seconds (SS terrain)", "value": "1" }
         ]
       },
       {
@@ -47,7 +47,7 @@ module.exports = [
         "defaultValue": "0",
         "label": "Ocean animation",
         "options": [
-          { "label": "Silk (ultra-fluid, more battery)", "value": "3" },
+          { "label": "Silk (ultra-fluid)", "value": "3" },
           { "label": "Fluid (updates every second)", "value": "0" },
           { "label": "Eco (drifts once a minute)", "value": "1" },
           { "label": "Frozen", "value": "2" }
