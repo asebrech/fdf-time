@@ -89,10 +89,16 @@ Run with the pebble-tool venv python inside the FHS env
   foreground color for the plateau tops.
   Pebble is 4-levels-per-channel; ports pick the nearest VIVID hue, never
   naive rounding (pastels round to washed-out gray), with each theme's
-  signature accent on the wall tips (index 4). Placement rule: LARGE areas
-  (wall body 2-3, crests 5-6) take the scheme's saturated colors; pastels
-  (#AAAAFF-class) go in the morph sweep (7-10) only — on big areas they
-  read white and kill the tops' contrast. Plus a rolling terrain
+  signature accent on the wall tips (index 4). Placement rules: theme
+  identity lives in the LARGE areas — floor 0-1 must be a "visible dark"
+  in the scheme's dominant hue (55-level channels; near-black floors made
+  every theme look identical), wall body 2-3 and crests 5-6 take the
+  scheme's saturated colors; pastels (#AAAAFF-class) go in the morph
+  sweep (7-9, most vivid at 9) only. Tops draw at stroke width 2 (walls
+  and mesh at 1) — that width difference, not color alone, is what
+  separates digits from walls. Top threshold is 9.5 (not 9.0, which cut
+  the sweep before its final color; not 10.0 — the morph interpolation
+  never quite reaches 10<<8). Plus a rolling terrain
   swell in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).

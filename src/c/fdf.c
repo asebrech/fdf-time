@@ -36,49 +36,49 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 // All are hand-quantized ports of popular editor color schemes. Pebble has
 // 4 levels per channel, so each entry picks the nearest VIVID Pebble color
 // that keeps the scheme's hue identity (naive rounding turns pastel schemes
-// into washed-out gray).
+// into washed-out gray). Theme identity must live in the LARGE areas —
+// floor (0-1) and wall body (2-3) carry each scheme's dominant hue as a
+// "visible dark" (55-level channels; near-black floors made every theme
+// look alike: white digits over an invisible mesh). Indices 7-9 are the
+// morph sweep — each theme's most vivid accents, brightest last.
 static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
-  { // 0: Catppuccin Mocha — night-lavender base, pastel accents. Wall
-    // body stays on the dark overlays (#6c7086 -> Liberty) so the mauve
-    // tips and the tops keep their pop; pastels are for accents, not
-    // large areas.
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
-    {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
+  { // 0: Catppuccin Mocha — violet night: purple floor, mauve wall tips,
+    // sapphire/teal crests, sweep ending on the vivid red accent
+    {.argb = GColorImperialPurpleARGB8}, {.argb = GColorImperialPurpleARGB8},
+    {.argb = GColorLibertyARGB8},        {.argb = GColorPurpureusARGB8},
     {.argb = GColorRichBrilliantLavenderARGB8}, {.argb = GColorPictonBlueARGB8},
     {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
-    {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
-    {.argb = GColorBrilliantRoseARGB8},
+    {.argb = GColorMelonARGB8},          {.argb = GColorBrilliantRoseARGB8},
+    {.argb = GColorRichBrilliantLavenderARGB8},
   },
-  { // 1: Gruvbox — retro warmth: olive-brown ground, amber walls (red
-    // read as pure fire; plain orange read salmon on thin AA lines)
-    {.argb = GColorDarkGrayARGB8},       {.argb = GColorArmyGreenARGB8},
-    {.argb = GColorArmyGreenARGB8},      {.argb = GColorWindsorTanARGB8},
+  { // 1: Gruvbox — retro warmth: olive floor, amber walls, golden sweep
+    {.argb = GColorArmyGreenARGB8},      {.argb = GColorArmyGreenARGB8},
+    {.argb = GColorWindsorTanARGB8},     {.argb = GColorWindsorTanARGB8},
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorBrassARGB8},
     {.argb = GColorLimerickARGB8},       {.argb = GColorRajahARGB8},
-    {.argb = GColorPastelYellowARGB8},   {.argb = GColorPastelYellowARGB8},
+    {.argb = GColorOrangeARGB8},         {.argb = GColorIcterineARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 2: Nord — polar night floor, frost mids, aurora morph
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorMidnightGreenARGB8},
-    {.argb = GColorDarkGrayARGB8},       {.argb = GColorCadetBlueARGB8},
+  { // 2: Nord — the deliberately soft one: gray polar floor, frost mids,
+    // aurora sweep. Palest of the six by identity.
+    {.argb = GColorDarkGrayARGB8},       {.argb = GColorDarkGrayARGB8},
+    {.argb = GColorCadetBlueARGB8},      {.argb = GColorCadetBlueARGB8},
     {.argb = GColorBabyBlueEyesARGB8},   {.argb = GColorCelesteARGB8},
     {.argb = GColorCelesteARGB8},        {.argb = GColorMintGreenARGB8},
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
     {.argb = GColorSunsetOrangeARGB8},
   },
-  { // 3: Tokyo Night — deep navy, neon blue walls, city-light morph.
-    // Large areas (wall body 2-3 = blue0 #3d59a1, crests 5-6 = cyan
-    // #7dcfff / teal #73daca) use the scheme's SATURATED blues; the pastel
-    // purple lives in the morph sweep — pastels on big areas read white
-    // and kill the tops' contrast.
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorOxfordBlueARGB8},
+  { // 3: Tokyo Night — blue on blue: night-blue floor, cobalt body, neon
+    // tips, teal crests, city-light sweep ending hot pink
+    {.argb = GColorDukeBlueARGB8},       {.argb = GColorDukeBlueARGB8},
     {.argb = GColorCobaltBlueARGB8},     {.argb = GColorCobaltBlueARGB8},
     {.argb = GColorPictonBlueARGB8},     {.argb = GColorElectricBlueARGB8},
     {.argb = GColorMediumSpringGreenARGB8}, {.argb = GColorSpringBudARGB8},
     {.argb = GColorRajahARGB8},          {.argb = GColorBrilliantRoseARGB8},
     {.argb = GColorBabyBlueEyesARGB8},
   },
-  { // 4: Kanagawa — Hokusai wave: deep teal sea, autumn-gold crests
+  { // 4: Kanagawa — Hokusai wave: deep teal sea, violet mid, crystal-blue
+    // tips, autumn-gold crests
     {.argb = GColorMidnightGreenARGB8},  {.argb = GColorMidnightGreenARGB8},
     {.argb = GColorCadetBlueARGB8},      {.argb = GColorPurpureusARGB8},
     {.argb = GColorPictonBlueARGB8},     {.argb = GColorBrassARGB8},
@@ -86,11 +86,9 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorChromeYellowARGB8},   {.argb = GColorPastelYellowARGB8},
     {.argb = GColorPastelYellowARGB8},
   },
-  { // 5: Dracula — purple night, hot pink walls, green/cyan crests.
-    // Wall body stays on the dark comment-blue; the pastel purple closes
-    // the morph sweep, and the pale cyan sits at index 6 (only the rare
-    // highest crest peaks) so large areas stay saturated.
-    {.argb = GColorOxfordBlueARGB8},     {.argb = GColorDarkGrayARGB8},
+  { // 5: Dracula — purple floor, hot pink walls, green crests, sweep
+    // ending on the pastel purple
+    {.argb = GColorImperialPurpleARGB8}, {.argb = GColorDarkGrayARGB8},
     {.argb = GColorLibertyARGB8},        {.argb = GColorLibertyARGB8},
     {.argb = GColorBrilliantRoseARGB8},  {.argb = GColorScreaminGreenARGB8},
     {.argb = GColorCelesteARGB8},        {.argb = GColorPastelYellowARGB8},
@@ -347,8 +345,13 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         // no snaps.
         uint16_t ck_a = s_ck8[y][x];
         uint16_t ck_b = s_ck8[ny][nx];
-        if (ck_a >= (9 << 8) && ck_b >= (9 << 8)) {
+        // Top threshold 9.5: the sweep's last color (index 9) stays on
+        // screen through the slow ease-out finish — at 9.0 the sweep was
+        // cut before its final color ever showed. Tops draw at width 2 so
+        // digits separate structurally from the 1px wall/mesh lines.
+        if (ck_a >= (9 << 8) + 128 && ck_b >= (9 << 8) + 128) {
           c = (GColor)s_top;
+          w = 2;
         } else {
           int ia = ck_a >> 8;
           int ib = ck_b >> 8;
@@ -357,6 +360,10 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
             int steps = di < 0 ? -di : di;
             if (steps > 4) {
               steps = 4;
+            }
+            if (last_w != 1) {
+              graphics_context_set_stroke_width(ctx, 1);
+              last_w = 1;
             }
             GPoint pa = s_pts[y][x];
             GPoint pb = s_pts[ny][nx];
