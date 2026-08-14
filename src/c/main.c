@@ -8,6 +8,9 @@
 
 // User settings, edited from the phone via Clay and persisted on the watch.
 #define SETTINGS_KEY 1
+// Sticky-toggle state (shake_action 3): persisted so leaving and returning
+// to the watchface resumes on the seconds view the user toggled into.
+#define PEEK_KEY 2
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
@@ -150,6 +153,9 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
       prv_show_time();
       prv_subscribe_ticks();
     }
+    if (s_settings.shake_action == 3) {
+      persist_write_bool(PEEK_KEY, s_peeking);
+    }
     return;
   }
   prv_start_spin();
@@ -178,7 +184,7 @@ static void prv_show_seconds_now(void) {
 }
 
 static void prv_show_time(void) {
-  if (s_settings.display_mode == 1) {
+  if (s_settings.display_mode == 1 || s_peeking) {
     prv_show_seconds_now();
     return;
   }
@@ -257,6 +263,7 @@ static void prv_apply_settings(void) {
   if (s_settings.display_mode == 1 ||
       (s_settings.shake_action != 2 && s_settings.shake_action != 3)) {
     s_peeking = false;  // the peek/toggle only lives in classic mode
+    persist_write_bool(PEEK_KEY, false);
   }
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 2) {
@@ -338,6 +345,10 @@ static void prv_load_settings(void) {
   if (persist_exists(SETTINGS_KEY)) {
     persist_read_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
   }
+  // Resume a persisted sticky toggle (the splash then morphs into the
+  // seconds view instead of the time).
+  s_peeking = s_settings.shake_action == 3 && s_settings.display_mode == 0 &&
+              persist_read_bool(PEEK_KEY);
 }
 
 // --- window lifecycle ---
