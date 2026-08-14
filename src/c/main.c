@@ -14,7 +14,9 @@ typedef struct {
   uint8_t gradient;     // per-line wall gradients on/off
   uint8_t display_mode; // 0 classic HH/MM, 1 seconds (experimental)
   bool splash42;        // play the "42" splash on launch
-  bool shake_orbit;     // orbit spin on accelerometer tap
+  uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (classic
+                        // mode only; values match the pre-select boolean so
+                        // persisted settings keep meaning orbit)
   bool bt_vibe;         // double pulse when the phone connection drops
 } Settings;
 
@@ -28,13 +30,18 @@ static Animation *s_spin_anim;
 static AppTimer *s_splash_timer;
 static bool s_bt_connected;
 static char s_hhmm[8];  // seconds mode: small HH:MM drawn above the scene
+// Seconds peek (classic mode + shake_action 2): the terrain shows SS until
+// the minute rolls over — the revert then IS the classic minute morph — or
+// until a second flick. Entry shakes fire multiple taps, hence the debounce.
+static bool s_peeking;
+static uint64_t s_peek_entered_ms;
 
 static void prv_update_proc(Layer *layer, GContext *ctx) {
   // AA is fine at the current cell size (~6 px); it smeared into noise at
   // the pre-trimetric density. No-op on 1-bit displays.
   graphics_context_set_antialiased(ctx, true);
   fdf_draw(&s_model, ctx);
-  if (s_settings.display_mode == 1) {
+  if (s_settings.display_mode == 1 || s_peeking) {
     // Seconds mode: the terrain shows SS; HH:MM floats small over the
     // ocean's top band in the theme's foreground color.
     GRect b = layer_get_bounds(layer);
@@ -95,7 +102,17 @@ static const AnimationImplementation SPIN_IMPL = {
   .update = prv_spin_update,
 };
 
-static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
+static void prv_show_time(void);
+static void prv_show_seconds_now(void);
+static void prv_subscribe_ticks(void);
+
+static uint64_t prv_now_ms(void) {
+  time_t s;
+  uint16_t ms = time_ms(&s, NULL);
+  return (uint64_t)s * 1000 + ms;
+}
+
+static void prv_start_spin(void) {
   if (s_spin_anim) {
     return;
   }
@@ -107,6 +124,32 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
     .stopped = prv_spin_stopped,
   }, NULL);
   animation_schedule(s_spin_anim);
+}
+
+static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
+  if (s_splash_timer) {
+    return;
+  }
+  // The peek gesture only exists in classic display mode; the dedicated
+  // seconds mode keeps the orbit on shake.
+  if (s_settings.shake_action == 2 && s_settings.display_mode == 0) {
+    uint64_t now = prv_now_ms();
+    if (now - s_peek_entered_ms < 1200) {
+      return;  // one shake fires several taps — don't instantly exit
+    }
+    if (!s_peeking) {
+      s_peeking = true;
+      s_peek_entered_ms = now;
+      prv_show_seconds_now();
+      prv_subscribe_ticks();
+    } else {
+      s_peeking = false;
+      prv_show_time();
+      prv_subscribe_ticks();
+    }
+    return;
+  }
+  prv_start_spin();
 }
 
 // --- time handling ---
@@ -122,16 +165,22 @@ static int prv_display_hours(const struct tm *t) {
   return hours;
 }
 
-static void prv_show_time(void) {
+static void prv_show_seconds_now(void) {
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
+  snprintf(s_hhmm, sizeof(s_hhmm), "%d:%02d", prv_display_hours(t),
+           t->tm_min);
+  fdf_model_set_seconds(&s_model, t->tm_sec);
+  prv_start_morph_ms(SECONDS_MORPH_MS);
+}
+
+static void prv_show_time(void) {
   if (s_settings.display_mode == 1) {
-    snprintf(s_hhmm, sizeof(s_hhmm), "%d:%02d", prv_display_hours(t),
-             t->tm_min);
-    fdf_model_set_seconds(&s_model, t->tm_sec);
-    prv_start_morph_ms(SECONDS_MORPH_MS);
+    prv_show_seconds_now();
     return;
   }
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
   fdf_model_set_time(&s_model, prv_display_hours(t), t->tm_min);
   prv_start_morph_ms(MORPH_DURATION_MS);
 }
@@ -139,8 +188,18 @@ static void prv_show_time(void) {
 static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   // During the splash the 42 owns the stage: hold the time morph until
   // prv_splash_done plays it (the swell below still rolls).
-  if (!s_splash_timer &&
-      (s_settings.display_mode == 1 || (units_changed & MINUTE_UNIT))) {
+  if (!s_splash_timer && s_peeking) {
+    if (units_changed & MINUTE_UNIT) {
+      // The peek ends where the classic minute morph begins — the seconds
+      // finish the minute and the terrain morphs back into the new time.
+      s_peeking = false;
+      prv_show_time();
+      prv_subscribe_ticks();
+    } else {
+      prv_show_seconds_now();
+    }
+  } else if (!s_splash_timer &&
+             (s_settings.display_mode == 1 || (units_changed & MINUTE_UNIT))) {
     prv_show_time();
   }
 #if defined(PBL_COLOR)
@@ -171,26 +230,37 @@ static void prv_bt_handler(bool connected) {
   s_bt_connected = connected;
 }
 
+// Tick granularity depends on mode AND transient state (the seconds peek
+// temporarily needs second ticks, even on 1-bit).
+static void prv_subscribe_ticks(void) {
+  TimeUnits unit = MINUTE_UNIT;
+  if (s_settings.display_mode == 1 || s_peeking) {
+    unit = SECOND_UNIT;
+  }
+#if defined(PBL_COLOR)
+  if (s_settings.wave_mode == 0) {
+    unit = SECOND_UNIT;
+  }
+#endif
+  tick_timer_service_subscribe(unit, prv_tick_handler);
+}
+
 // (Re)wire every service the settings influence. Safe to call repeatedly:
 // re-subscribing replaces the previous subscription.
 static void prv_apply_settings(void) {
   fdf_set_style(s_settings.theme, s_settings.gradient != 0);
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
-
-  TimeUnits unit = MINUTE_UNIT;
-  if (s_settings.display_mode == 1) {
-    unit = SECOND_UNIT;  // the seconds mode morphs every tick, even on 1-bit
+  if (s_settings.display_mode == 1 || s_settings.shake_action != 2) {
+    s_peeking = false;  // the peek only lives in classic mode
   }
 #if defined(PBL_COLOR)
-  if (s_settings.wave_mode == 0) {
-    unit = SECOND_UNIT;
-  } else if (s_settings.wave_mode == 2) {
+  if (s_settings.wave_mode == 2) {
     s_model.wave_phase = 0;
   }
 #endif
-  tick_timer_service_subscribe(unit, prv_tick_handler);
+  prv_subscribe_ticks();
 
-  if (s_settings.shake_orbit) {
+  if (s_settings.shake_action != 0) {
     accel_tap_service_subscribe(prv_tap_handler);
   } else {
     accel_tap_service_unsubscribe();
@@ -234,7 +304,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     s_settings.splash42 = prv_tuple_int(t) != 0;
   }
   if ((t = dict_find(iter, MESSAGE_KEY_ShakeOrbit))) {
-    s_settings.shake_orbit = prv_tuple_int(t) != 0;
+    s_settings.shake_action = prv_tuple_int(t);
   }
   if ((t = dict_find(iter, MESSAGE_KEY_BtVibe))) {
     s_settings.bt_vibe = prv_tuple_int(t) != 0;
@@ -253,7 +323,7 @@ static void prv_load_settings(void) {
     .gradient = 1,
     .display_mode = 0,
     .splash42 = true,
-    .shake_orbit = true,
+    .shake_action = 1,
     .bt_vibe = false,
   };
   if (persist_exists(SETTINGS_KEY)) {

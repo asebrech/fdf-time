@@ -65,10 +65,15 @@ module.exports = [
         "defaultValue": true
       },
       {
-        "type": "toggle",
+        "type": "select",
         "messageKey": "ShakeOrbit",
-        "label": "Orbit spin on shake",
-        "defaultValue": true
+        "defaultValue": "1",
+        "label": "Shake gesture",
+        "options": [
+          { "label": "Orbit spin", "value": "1" },
+          { "label": "Peek at seconds (until the minute ends)", "value": "2" },
+          { "label": "Off", "value": "0" }
+        ]
       },
       {
         "type": "toggle",
