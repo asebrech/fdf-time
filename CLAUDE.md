@@ -172,7 +172,9 @@ Run with the pebble-tool venv python inside the FHS env
 ## Platform handling
 
 `targetPlatforms` covers all 7 platforms. Screen geometries differ (rect vs
-round, sizes from 144x168 to 200x228); use `PBL_IF_ROUND_ELSE`,
+round, sizes from 144x168 to 260x260); note flint (Pebble 2 Duo) is
+`PBL_BW` per the SDK platform defines — the vendored skill's table
+wrongly lists it as 64-color. Use `PBL_IF_ROUND_ELSE`,
 `PBL_IF_COLOR_ELSE` and `layer_get_bounds()`-relative layout rather than
 hardcoded coordinates. Test at minimum on `basalt` (color rect), `chalk`
 (round) and `emery` (large).
