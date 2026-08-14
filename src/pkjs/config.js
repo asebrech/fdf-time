@@ -33,6 +33,16 @@ module.exports = [
       },
       {
         "type": "select",
+        "messageKey": "Mode",
+        "defaultValue": "0",
+        "label": "Display mode",
+        "options": [
+          { "label": "Classic (HH:MM terrain)", "value": "0" },
+          { "label": "Seconds (experimental, drains battery)", "value": "1" }
+        ]
+      },
+      {
+        "type": "select",
         "messageKey": "WaveMode",
         "defaultValue": "0",
         "label": "Ocean animation",

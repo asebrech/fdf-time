@@ -25,6 +25,11 @@ typedef struct {
   uint16_t morph;                      // 0..65535 progress from z_from to z_to
   int32_t angle;                       // TRIG_MAX_ANGLE units; 0 = canonical view
   int32_t wave_phase;                  // terrain swell phase (color only)
+  // Two fitted framings: classic (HH/MM staggered pairs) and pair (a single
+  // centered pair — the seconds mode, zoomed larger). zoom8/center hold the
+  // active one, switched by fdf_model_set_mode.
+  int32_t zoom8_classic, zoom8_pair;
+  GPoint center_classic, center_pair;
   int32_t zoom8;                       // pixels per cell, 8-bit fraction
   // Trimetric axes, 1024-scale: the grid x axis (digit rows) projects along
   // (ax_cos, ax_sin), the y axis (HH/MM stack) along (-ay_cos, ay_sin).
@@ -42,4 +47,9 @@ void fdf_set_style(int theme, int gradient);
 // into z_to and reset morph so an animation can play.
 void fdf_model_set_time(FdfModel *m, int hours, int minutes);
 void fdf_model_set_demo42(FdfModel *m);
+// Seconds mode: one centered pair morphing every second.
+void fdf_model_set_seconds(FdfModel *m, int seconds);
+void fdf_model_set_mode(FdfModel *m, bool seconds_mode);
+// The active theme's plateau-top ("text") color; White on 1-bit.
+GColor fdf_top_color(void);
 void fdf_draw(FdfModel *m, GContext *ctx);

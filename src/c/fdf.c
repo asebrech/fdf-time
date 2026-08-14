@@ -151,6 +151,14 @@ void fdf_set_style(int theme, int relief) {
 }
 #endif
 
+GColor fdf_top_color(void) {
+#if defined(PBL_COLOR)
+  return (GColor)s_top;
+#else
+  return GColorWhite;
+#endif
+}
+
 static void prv_place_digit(uint8_t z[FDF_ROWS][FDF_COLS], int digit,
                             int col0, int row0) {
   for (int fr = 0; fr < DIGIT_FONT_ROWS; fr++) {
@@ -250,6 +258,44 @@ void fdf_model_init(FdfModel *m, GRect bounds) {
   // The extrusion headroom sits entirely above the grid plane; nudge the
   // model down by half of it so the lifted digits read centered.
   m->center.y += (m->zoom8 * FDF_Z_TOP * Z_NUM / Z_DEN) >> 9;
+  m->zoom8_classic = m->zoom8;
+  m->center_classic = m->center;
+
+  // Second framing: a single centered pair (the seconds mode). Same axes,
+  // fit on the pair's box alone, capped at 1.5x the classic zoom so the
+  // ocean mesh doesn't get too coarse.
+  {
+    const int pc0 = FDF_BLEED + BORDER + FDF_STAGGER / 2;
+    const int pc1 = pc0 + 2 * DIGIT_W + DIGIT_GAP - 1;
+    const int pr0 = FDF_BLEED + (INNER_ROWS - DIGIT_H) / 2;
+    const int pr1 = pr0 + DIGIT_H - 1;
+    const int pcorners[4][2] = {{pc0, pr0}, {pc1, pr0}, {pc0, pr1}, {pc1, pr1}};
+    int32_t minx = INT32_MAX, maxx = INT32_MIN;
+    int32_t miny = INT32_MAX, maxy = INT32_MIN;
+    for (int i = 0; i < 4; i++) {
+      int32_t px = pcorners[i][0] * m->ax_cos - pcorners[i][1] * m->ay_cos;
+      int32_t py = pcorners[i][0] * m->ax_sin + pcorners[i][1] * m->ay_sin;
+      if (px < minx) minx = px;
+      if (px > maxx) maxx = px;
+      if (py < miny) miny = py;
+      if (py > maxy) maxy = py;
+    }
+    int32_t span_w = maxx - minx;
+    int32_t span_h = maxy - miny + (FDF_Z_TOP * 1024 * Z_NUM) / Z_DEN;
+    int32_t zx = ((int32_t)avail_x << 18) / span_w;
+    int32_t zy = ((int32_t)avail_y << 18) / span_h;
+    int32_t zoom = zx < zy ? zx : zy;
+    int32_t cap = m->zoom8_classic * 3 / 2;
+    m->zoom8_pair = zoom < cap ? zoom : cap;
+    m->center_pair = GPoint(bounds.origin.x + bounds.size.w / 2,
+                            bounds.origin.y + bounds.size.h / 2);
+    m->center_pair.y += (m->zoom8_pair * FDF_Z_TOP * Z_NUM / Z_DEN) >> 9;
+  }
+}
+
+void fdf_model_set_mode(FdfModel *m, bool seconds_mode) {
+  m->zoom8 = seconds_mode ? m->zoom8_pair : m->zoom8_classic;
+  m->center = seconds_mode ? m->center_pair : m->center_classic;
 }
 
 void fdf_model_set_time(FdfModel *m, int hours, int minutes) {
@@ -261,6 +307,11 @@ void fdf_model_set_time(FdfModel *m, int hours, int minutes) {
 void fdf_model_set_demo42(FdfModel *m) {
   prv_snapshot_current(m);
   prv_place_pair(m->z_to, 42, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2);
+}
+
+void fdf_model_set_seconds(FdfModel *m, int seconds) {
+  prv_snapshot_current(m);
+  prv_place_pair(m->z_to, seconds, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2);
 }
 
 // Edge classes drive the visual hierarchy. Plateau-top edges (both ends

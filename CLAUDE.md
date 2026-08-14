@@ -68,12 +68,17 @@ Run with the pebble-tool venv python inside the FHS env
   tabpanels under the Screenshots panel, never by find's labels. Banner
   lives per-platform under the Banners tab. Recipe to replace a full set:
   delete 4 of 5 old, upload the 4 new one-by-one, delete the last old.
-- rePebble (Aug 2026 migration): the legacy release API still publishes
-  pbw+notes+version, but SILENTLY IGNORES the screenshot fields and
-  can't touch the banner. The new "Pebble Developer Dashboard"
-  (developer.repebble.com/dashboard) is the intended manager; its
-  GitHub sign-in was failing ("Failed to create developer profile") —
-  contact appstore@rePebble.com when blocked.
+- rePebble (post-Aug-2026 migration): the release API applies
+  screenshots ASYNCHRONOUSLY (they appeared hours later, after an
+  outage) and silently drops files with wrong dimensions. Listing
+  management (screenshots per platform, per-platform banners, app
+  icons) lives in the "Pebble Developer Dashboard"
+  (developer.repebble.com/dashboard, user's session) — its platform
+  TABS only switch via real coordinate clicks (ref-clicks silently
+  no-op, leaving you editing the wrong platform: verify the active tab
+  in a screenshot before touching anything). Its own state API is
+  GET developer.repebble.com/api/dashboard/apps/<id> — the ground truth
+  for verifying edits landed.
 
 ## Versioning policy (agreed with the user, 2026-08-13)
 

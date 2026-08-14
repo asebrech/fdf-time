@@ -2,6 +2,7 @@
 #include "fdf.h"
 
 #define MORPH_DURATION_MS 700
+#define SECONDS_MORPH_MS 500
 #define SPIN_DURATION_MS 1400
 #define SPLASH_MS 1500
 
@@ -11,6 +12,7 @@ typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
   uint8_t gradient;     // per-line wall gradients on/off
+  uint8_t display_mode; // 0 classic HH/MM, 1 seconds (experimental)
   bool splash42;        // play the "42" splash on launch
   bool shake_orbit;     // orbit spin on accelerometer tap
   bool bt_vibe;         // double pulse when the phone connection drops
@@ -25,12 +27,23 @@ static Animation *s_morph_anim;
 static Animation *s_spin_anim;
 static AppTimer *s_splash_timer;
 static bool s_bt_connected;
+static char s_hhmm[8];  // seconds mode: small HH:MM drawn above the scene
 
 static void prv_update_proc(Layer *layer, GContext *ctx) {
   // AA is fine at the current cell size (~6 px); it smeared into noise at
   // the pre-trimetric density. No-op on 1-bit displays.
   graphics_context_set_antialiased(ctx, true);
   fdf_draw(&s_model, ctx);
+  if (s_settings.display_mode == 1) {
+    // Seconds mode: the terrain shows SS; HH:MM floats small over the
+    // ocean's top band in the theme's foreground color.
+    GRect b = layer_get_bounds(layer);
+    graphics_context_set_text_color(ctx, fdf_top_color());
+    graphics_draw_text(ctx, s_hhmm,
+                       fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                       GRect(0, PBL_IF_ROUND_ELSE(10, 2), b.size.w, 28),
+                       GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  }
 }
 
 // --- morph animation (altitudes z_from -> z_to) ---
@@ -50,12 +63,12 @@ static const AnimationImplementation MORPH_IMPL = {
   .update = prv_morph_update,
 };
 
-static void prv_start_morph(void) {
+static void prv_start_morph_ms(uint32_t ms) {
   if (s_morph_anim) {
     animation_unschedule(s_morph_anim);
   }
   s_morph_anim = animation_create();
-  animation_set_duration(s_morph_anim, MORPH_DURATION_MS);
+  animation_set_duration(s_morph_anim, ms);
   animation_set_curve(s_morph_anim, AnimationCurveEaseOut);
   animation_set_implementation(s_morph_anim, &MORPH_IMPL);
   animation_set_handlers(s_morph_anim, (AnimationHandlers) {
@@ -98,9 +111,7 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
 
 // --- time handling ---
 
-static void prv_show_time(void) {
-  time_t now = time(NULL);
-  struct tm *t = localtime(&now);
+static int prv_display_hours(const struct tm *t) {
   int hours = t->tm_hour;
   if (!clock_is_24h_style()) {
     hours = hours % 12;
@@ -108,14 +119,28 @@ static void prv_show_time(void) {
       hours = 12;
     }
   }
-  fdf_model_set_time(&s_model, hours, t->tm_min);
-  prv_start_morph();
+  return hours;
+}
+
+static void prv_show_time(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  if (s_settings.display_mode == 1) {
+    snprintf(s_hhmm, sizeof(s_hhmm), "%d:%02d", prv_display_hours(t),
+             t->tm_min);
+    fdf_model_set_seconds(&s_model, t->tm_sec);
+    prv_start_morph_ms(SECONDS_MORPH_MS);
+    return;
+  }
+  fdf_model_set_time(&s_model, prv_display_hours(t), t->tm_min);
+  prv_start_morph_ms(MORPH_DURATION_MS);
 }
 
 static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   // During the splash the 42 owns the stage: hold the time morph until
   // prv_splash_done plays it (the swell below still rolls).
-  if ((units_changed & MINUTE_UNIT) && !s_splash_timer) {
+  if (!s_splash_timer &&
+      (s_settings.display_mode == 1 || (units_changed & MINUTE_UNIT))) {
     prv_show_time();
   }
 #if defined(PBL_COLOR)
@@ -150,8 +175,12 @@ static void prv_bt_handler(bool connected) {
 // re-subscribing replaces the previous subscription.
 static void prv_apply_settings(void) {
   fdf_set_style(s_settings.theme, s_settings.gradient != 0);
+  fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
 
   TimeUnits unit = MINUTE_UNIT;
+  if (s_settings.display_mode == 1) {
+    unit = SECOND_UNIT;  // the seconds mode morphs every tick, even on 1-bit
+  }
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 0) {
     unit = SECOND_UNIT;
@@ -198,6 +227,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_Gradient))) {
     s_settings.gradient = prv_tuple_int(t) != 0;
   }
+  if ((t = dict_find(iter, MESSAGE_KEY_Mode))) {
+    s_settings.display_mode = prv_tuple_int(t);
+  }
   if ((t = dict_find(iter, MESSAGE_KEY_Splash42))) {
     s_settings.splash42 = prv_tuple_int(t) != 0;
   }
@@ -209,6 +241,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   }
   persist_write_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
   prv_apply_settings();
+  if (!s_splash_timer) {
+    prv_show_time();  // re-render immediately in the (possibly new) mode
+  }
 }
 
 static void prv_load_settings(void) {
@@ -216,6 +251,7 @@ static void prv_load_settings(void) {
     .theme = 0,  // Tokyo Night — closest heir to the original FdF look
     .wave_mode = 0,
     .gradient = 1,
+    .display_mode = 0,
     .splash42 = true,
     .shake_orbit = true,
     .bt_vibe = false,
@@ -252,14 +288,14 @@ static void prv_window_load(Window *window) {
   // Homage splash: the original 42.fdf, then morph into the time. Ticks
   // are live during the splash so the swell rolls; the tick handler holds
   // back the time morph until the splash is done.
+  prv_apply_settings();
   if (s_settings.splash42) {
     fdf_model_set_demo42(&s_model);
-    prv_start_morph();
+    prv_start_morph_ms(MORPH_DURATION_MS);
     s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
   } else {
     prv_show_time();
   }
-  prv_apply_settings();
 }
 
 static void prv_window_unload(Window *window) {
