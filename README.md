@@ -9,7 +9,7 @@ current time instead, refreshed every minute.
 (new Pebble app) · [Rebble store](https://apps.rebble.io/en_US/application/6a7dcbb1a2b290000911d59c)
 (legacy ecosystem)
 
-<img src="docs/boot-emery.gif" alt="Boot animation: the terrain grows into 42, then morphs into the time" width="200">
+<img src="docs/boot-emery.gif" alt="Boot animation: the terrain grows into 42, then morphs into the time" width="200"> <img src="docs/seconds-emery.gif" alt="Seconds mode: the terrain morphs a new SS value every second" width="200">
 
 | basalt (color) | emery (real Pebble Time 2) | diorite (1-bit) | chalk (round) |
 |---|---|---|---|
@@ -17,14 +17,24 @@ current time instead, refreshed every minute.
 
 Features:
 
-- **HH / MM stacked** as flat-top plateaus (2-cell-thick strokes, exactly the
-  style of the original `42.fdf` map), on a wireframe terrain grid.
+- **HH / MM staggered** as flat-top plateaus (2-cell-thick strokes, exactly
+  the style of the original `42.fdf` map), on a living wireframe terrain —
+  an ocean swell rolls around the digits.
+- **Six color themes**, hand-quantized ports of popular editor schemes:
+  Tokyo Night (default), Catppuccin, Dracula, Gruvbox, Kanagawa, Nord.
+  Everything derives from the theme: floor, walls (FdF-style per-vertex
+  gradients), wave crests, morph sweep, digit tops.
 - **Startup homage**: the face boots showing "42", then morphs into the time.
-- **Morph animation**: on each minute change, altitudes interpolate from the
-  old digits to the new ones — the terrain grows and recedes (~700 ms,
-  ease-out).
+- **Morph animation**: on each minute change, old digits melt into the
+  terrain while the new ones rise through the theme's color ramp.
+- **Seconds, three ways**: a dedicated SS display mode, a shake gesture that
+  peeks at the seconds until the minute ends, or a sticky toggle that stays
+  until the next shake (and survives relaunches).
 - **Wrist-flick orbit**: a tap/flick spins the model through a full turn
   (the FdF rotation bonus), then settles back to the canonical view.
+- **Settings page** (phone app): theme, ocean animation (Silk / Fluid /
+  Eco / Frozen), wall gradients, display mode, shake gesture, "42" splash,
+  Bluetooth-loss vibration.
 - Runs on all 7 platforms: `aplite`, `basalt`, `chalk`, `diorite`, `emery`,
   `flint`, `gabbro`.
 
@@ -43,8 +53,10 @@ Pure integer math, no floats — friendly to the FPU-less Cortex-M3:
   (center → rotate → project) recomputes from the pristine grid every frame,
   FdF-style.
 - Legibility at watch resolution comes from visual hierarchy: plateau-top
-  edges (the digit outlines) are bright/bold, walls and the base mesh recede
-  (dark green on color displays; dropped or thinned on 1-bit displays).
+  edges (the digit outlines) take the theme's foreground color, walls fade
+  through a capped per-vertex gradient anchored dark at the floor, and the
+  base mesh stays a "visible dark" in the theme's dominant hue (walls are
+  dropped and tops bolded on 1-bit displays).
 
 ## Install on your watch
 

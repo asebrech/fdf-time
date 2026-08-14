@@ -132,12 +132,19 @@ Run with the pebble-tool venv python inside the FHS env
   z=6 so digits stay the foreground).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map.
-- `src/c/main.c` — lifecycle: splash shows "42" then morphs to the time;
-  minute boundaries trigger a morph `Animation`; `accel_tap_service`
-  triggers a full-orbit spin `Animation` (progress maps 1:1 to
-  `TRIG_MAX_ANGLE`). Color platforms tick `SECOND_UNIT` to advance
-  `wave_phase` (one swell wavelength per 30 s); 1-bit stays on
-  `MINUTE_UNIT` — no terrain there, and second-ticking wastes battery.
+- `src/c/main.c` — lifecycle: splash shows "42" then morphs into the
+  current view; minute boundaries trigger a morph `Animation`. Display
+  modes: classic HH/MM terrain, or seconds (a single centered SS pair at
+  a 1.5x-fitted framing, morphing every second, HH:MM as small text over
+  the ocean). The shake gesture is a 4-way setting: orbit spin / peek at
+  seconds (reverts where the minute morph begins) / sticky seconds toggle
+  (persisted under PEEK_KEY, survives relaunches; peek/toggle use the
+  CLASSIC framing so there is no camera jump, and both are guarded out of
+  the seconds display mode on both the Clay and watch sides) / off. Tap
+  debounce is 1.2 s — one shake fires several taps. Wave modes: silk
+  (66 ms AppTimer interpolates the phase continuously), fluid (second
+  ticks), eco (minute drift), frozen; 1-bit has no terrain and stays on
+  MINUTE_UNIT unless the seconds view needs SECOND_UNIT.
 - `src/pkjs/` — phone-side JS: `config.js` is the Clay settings page
   (theme, wave mode, gradient on/off, splash, shake orbit, BT vibe),
   `index.js` just instantiates Clay. Settings arrive in `main.c` via
