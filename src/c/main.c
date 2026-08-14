@@ -14,9 +14,11 @@ typedef struct {
   uint8_t gradient;     // per-line wall gradients on/off
   uint8_t display_mode; // 0 classic HH/MM, 1 seconds (experimental)
   bool splash42;        // play the "42" splash on launch
-  uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (classic
-                        // mode only; values match the pre-select boolean so
-                        // persisted settings keep meaning orbit)
+  uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (reverts
+                        // at the minute), 3 toggle seconds (sticky until the
+                        // next shake). 2/3 exist in classic mode only;
+                        // values match the pre-select boolean so persisted
+                        // settings keep meaning orbit.
   bool bt_vibe;         // double pulse when the phone connection drops
 } Settings;
 
@@ -130,9 +132,10 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
   if (s_splash_timer) {
     return;
   }
-  // The peek gesture only exists in classic display mode; the dedicated
-  // seconds mode keeps the orbit on shake.
-  if (s_settings.shake_action == 2 && s_settings.display_mode == 0) {
+  // The peek/toggle gestures only exist in classic display mode; the
+  // dedicated seconds mode keeps the orbit on shake.
+  if ((s_settings.shake_action == 2 || s_settings.shake_action == 3) &&
+      s_settings.display_mode == 0) {
     uint64_t now = prv_now_ms();
     if (now - s_peek_entered_ms < 1200) {
       return;  // one shake fires several taps — don't instantly exit
@@ -189,9 +192,10 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   // During the splash the 42 owns the stage: hold the time morph until
   // prv_splash_done plays it (the swell below still rolls).
   if (!s_splash_timer && s_peeking) {
-    if (units_changed & MINUTE_UNIT) {
-      // The peek ends where the classic minute morph begins — the seconds
-      // finish the minute and the terrain morphs back into the new time.
+    if ((units_changed & MINUTE_UNIT) && s_settings.shake_action == 2) {
+      // Peek variant: it ends where the classic minute morph begins — the
+      // seconds finish the minute and the terrain morphs back into the new
+      // time. The sticky variant (3) stays until the next shake.
       s_peeking = false;
       prv_show_time();
       prv_subscribe_ticks();
@@ -250,8 +254,9 @@ static void prv_subscribe_ticks(void) {
 static void prv_apply_settings(void) {
   fdf_set_style(s_settings.theme, s_settings.gradient != 0);
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
-  if (s_settings.display_mode == 1 || s_settings.shake_action != 2) {
-    s_peeking = false;  // the peek only lives in classic mode
+  if (s_settings.display_mode == 1 ||
+      (s_settings.shake_action != 2 && s_settings.shake_action != 3)) {
+    s_peeking = false;  // the peek/toggle only lives in classic mode
   }
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 2) {
@@ -309,8 +314,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_BtVibe))) {
     s_settings.bt_vibe = prv_tuple_int(t) != 0;
   }
-  if (s_settings.display_mode == 1 && s_settings.shake_action == 2) {
-    s_settings.shake_action = 1;  // peek doesn't exist in seconds mode
+  if (s_settings.display_mode == 1 &&
+      (s_settings.shake_action == 2 || s_settings.shake_action == 3)) {
+    s_settings.shake_action = 1;  // peek/toggle don't exist in seconds mode
   }
   persist_write_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
   prv_apply_settings();

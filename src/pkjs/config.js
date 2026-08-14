@@ -72,6 +72,7 @@ module.exports = [
         "options": [
           { "label": "Orbit spin", "value": "1" },
           { "label": "Peek at seconds (until the minute ends)", "value": "2" },
+          { "label": "Toggle seconds (until the next shake)", "value": "3" },
           { "label": "Off", "value": "0" }
         ]
       },

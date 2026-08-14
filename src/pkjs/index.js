@@ -13,7 +13,8 @@ var customClay = function () {
       return;
     }
     function sync() {
-      if (mode.get() === '1' && shake.get() === '2') {
+      var s = shake.get();
+      if (mode.get() === '1' && (s === '2' || s === '3')) {
         shake.set('1');
       }
     }
