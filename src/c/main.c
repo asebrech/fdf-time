@@ -309,6 +309,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_BtVibe))) {
     s_settings.bt_vibe = prv_tuple_int(t) != 0;
   }
+  if (s_settings.display_mode == 1 && s_settings.shake_action == 2) {
+    s_settings.shake_action = 1;  // peek doesn't exist in seconds mode
+  }
   persist_write_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
   prv_apply_settings();
   if (!s_splash_timer) {
