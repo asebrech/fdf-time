@@ -98,7 +98,10 @@ Run with the pebble-tool venv python inside the FHS env
   everything else — width-2 tops were tried (digit/wall separation) and
   rejected by the user as too heavy. Top threshold is 9.5 (not 9.0, which
   cut the sweep before its final color; not 10.0 — the morph
-  interpolation never quite reaches 10<<8). Plus a rolling terrain
+  interpolation never quite reaches 10<<8). Wall gradients are a user
+  toggle (default on); gradient segments clamp endpoint indices to
+  GRAD_CAP BEFORE splitting so the blend spans the full line (clamping
+  per-segment left half of every tall wall a flat accent block). Plus a rolling terrain
   swell in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).
@@ -111,7 +114,7 @@ Run with the pebble-tool venv python inside the FHS env
   `wave_phase` (one swell wavelength per 30 s); 1-bit stays on
   `MINUTE_UNIT` — no terrain there, and second-ticking wastes battery.
 - `src/pkjs/` — phone-side JS: `config.js` is the Clay settings page
-  (theme, wave mode, relief intensity, splash, shake orbit, BT vibe),
+  (theme, wave mode, gradient on/off, splash, shake orbit, BT vibe),
   `index.js` just instantiates Clay. Settings arrive in `main.c` via
   AppMessage (`prv_inbox_received` — Clay sends select values as STRINGS,
   toggles as ints; `prv_tuple_int` handles both), persist under

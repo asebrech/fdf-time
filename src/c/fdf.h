@@ -35,9 +35,9 @@ typedef struct {
 
 void fdf_model_init(FdfModel *m, GRect bounds);
 // Select the altitude palette (0 catppuccin, 1 gruvbox, 2 nord,
-// 3 tokyo night, 4 kanagawa, 5 dracula) and the slope-gradient brightness
-// cap (0 subtle, 1 balanced, 2 vivid). No-op on 1-bit displays.
-void fdf_set_style(int theme, int relief);
+// 3 tokyo night, 4 kanagawa, 5 dracula) and whether walls draw per-line
+// gradients (else one solid color per edge). No-op on 1-bit displays.
+void fdf_set_style(int theme, int gradient);
 // Snapshot current (interpolated) altitudes into z_from, write the new time
 // into z_to and reset morph so an animation can play.
 void fdf_model_set_time(FdfModel *m, int hours, int minutes);

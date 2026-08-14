@@ -26,15 +26,10 @@ module.exports = [
         ]
       },
       {
-        "type": "select",
-        "messageKey": "Relief",
-        "defaultValue": "1",
-        "label": "Wall gradient intensity",
-        "options": [
-          { "label": "Subtle", "value": "0" },
-          { "label": "Balanced", "value": "1" },
-          { "label": "Vivid", "value": "2" }
-        ]
+        "type": "toggle",
+        "messageKey": "Gradient",
+        "label": "Wall gradients",
+        "defaultValue": true
       },
       {
         "type": "select",

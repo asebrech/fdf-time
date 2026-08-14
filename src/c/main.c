@@ -10,7 +10,7 @@
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (3 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift), 2 frozen
-  uint8_t relief;       // slope-gradient cap: 0 subtle, 1 balanced, 2 vivid
+  uint8_t gradient;     // per-line wall gradients on/off
   bool splash42;        // play the "42" splash on launch
   bool shake_orbit;     // orbit spin on accelerometer tap
   bool bt_vibe;         // double pulse when the phone connection drops
@@ -149,7 +149,7 @@ static void prv_bt_handler(bool connected) {
 // (Re)wire every service the settings influence. Safe to call repeatedly:
 // re-subscribing replaces the previous subscription.
 static void prv_apply_settings(void) {
-  fdf_set_style(s_settings.theme, s_settings.relief);
+  fdf_set_style(s_settings.theme, s_settings.gradient != 0);
 
   TimeUnits unit = MINUTE_UNIT;
 #if defined(PBL_COLOR)
@@ -195,8 +195,8 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_WaveMode))) {
     s_settings.wave_mode = prv_tuple_int(t);
   }
-  if ((t = dict_find(iter, MESSAGE_KEY_Relief))) {
-    s_settings.relief = prv_tuple_int(t);
+  if ((t = dict_find(iter, MESSAGE_KEY_Gradient))) {
+    s_settings.gradient = prv_tuple_int(t) != 0;
   }
   if ((t = dict_find(iter, MESSAGE_KEY_Splash42))) {
     s_settings.splash42 = prv_tuple_int(t) != 0;
@@ -215,7 +215,7 @@ static void prv_load_settings(void) {
   s_settings = (Settings) {
     .theme = 3,  // Tokyo Night — closest heir to the original FdF look
     .wave_mode = 0,
-    .relief = 1,
+    .gradient = 1,
     .splash42 = true,
     .shake_orbit = true,
     .bt_vibe = false,

@@ -111,15 +111,16 @@ static const GColor8 TOPS[PALETTE_COUNT] = {
 
 static const GColor8 *s_palette = PALETTES[0];
 static GColor8 s_top = {.argb = GColorWhiteARGB8};
-// Slope-gradient brightness cap (palette index): the knob behind the
-// "relief intensity" setting. See the cap comment in fdf_draw.
-static int s_grad_cap = 4;
+// Slope-gradient brightness cap (palette index). 4 = the theme accent;
+// one step higher crowded the stroke gaps and hurt digit parsing.
+#define GRAD_CAP 4
+static bool s_gradient = true;
 
-void fdf_set_style(int theme, int relief) {
+void fdf_set_style(int theme, int gradient) {
   unsigned t = (unsigned)theme < PALETTE_COUNT ? theme : 0;
   s_palette = PALETTES[t];
   s_top = TOPS[t];
-  s_grad_cap = relief <= 0 ? 2 : relief >= 2 ? 6 : 4;
+  s_gradient = gradient != 0;
 }
 
 // Rolling terrain in the bleed ring: overlapping sine swells, capped low
@@ -354,43 +355,58 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
         } else {
           int ia = ck_a >> 8;
           int ib = ck_b >> 8;
-          if (ia != ib) {
-            int di = ib - ia;
-            int steps = di < 0 ? -di : di;
-            if (steps > 4) {
-              steps = 4;
+          if (ia == ib) {
+            c = (GColor)s_palette[ia];
+          } else if (!s_gradient) {
+            // Gradients off: one solid color per edge — terrain slopes
+            // crest-lit, digit walls scale with height up to the theme's
+            // wall-body color, small steps recede.
+            int hi = ia > ib ? ia : ib;
+            int si;
+            if (prv_in_ring(y, x) && prv_in_ring(ny, nx)) {
+              si = hi;
+            } else if (hi - (ia < ib ? ia : ib) >= 2) {
+              si = hi * 2 / FDF_Z_TOP;
+            } else {
+              si = ia < ib ? ia : ib;
             }
-            if (last_w != 1) {
-              graphics_context_set_stroke_width(ctx, 1);
-              last_w = 1;
-            }
-            GPoint pa = s_pts[y][x];
-            GPoint pb = s_pts[ny][nx];
-            for (int s = 0; s < steps; s++) {
-              GPoint q0 = GPoint(pa.x + (pb.x - pa.x) * s / steps,
-                                 pa.y + (pb.y - pa.y) * s / steps);
-              GPoint q1 = GPoint(pa.x + (pb.x - pa.x) * (s + 1) / steps,
-                                 pa.y + (pb.y - pa.y) * (s + 1) / steps);
-              int si = ia + di * (2 * s + 1) / (2 * steps);
-              // Cap slope gradients partway up the ramp (user-tunable via
-              // the relief setting; default index 4): brighter segments
-              // right under the white rims read as fuzzy thick strokes and
-              // wreck glanceability (tried Malachite: green tips doubled
-              // the rims; warm colors were worse still). The warm ramp
-              // stays reserved for the morph sweep (equal-endpoint edges).
-              if (si > s_grad_cap) {
-                si = s_grad_cap;
+            c = (GColor)s_palette[si];
+          } else {
+            // Per-line gradient. Clamp the endpoint indices to the cap
+            // FIRST, then spread the segments over the FULL line with the
+            // last segment landing exactly on the clamped far color —
+            // clamping per-segment instead left half of every tall wall a
+            // flat accent block with the gradient squeezed into the lower
+            // half. The cap keeps bright segments away from the rims
+            // (warm colors stay reserved for the morph sweep).
+            int ia_c = ia > GRAD_CAP ? GRAD_CAP : ia;
+            int ib_c = ib > GRAD_CAP ? GRAD_CAP : ib;
+            if (ia_c == ib_c) {
+              c = (GColor)s_palette[ia_c];
+            } else {
+              int di = ib_c - ia_c;
+              int steps = di < 0 ? -di : di;
+              if (last_w != 1) {
+                graphics_context_set_stroke_width(ctx, 1);
+                last_w = 1;
               }
-              GColor sc = (GColor)s_palette[si];
-              if (!gcolor_equal(sc, last)) {
-                graphics_context_set_stroke_color(ctx, sc);
-                last = sc;
+              GPoint pa = s_pts[y][x];
+              GPoint pb = s_pts[ny][nx];
+              for (int s = 0; s < steps; s++) {
+                GPoint q0 = GPoint(pa.x + (pb.x - pa.x) * s / steps,
+                                   pa.y + (pb.y - pa.y) * s / steps);
+                GPoint q1 = GPoint(pa.x + (pb.x - pa.x) * (s + 1) / steps,
+                                   pa.y + (pb.y - pa.y) * (s + 1) / steps);
+                GColor sc = (GColor)s_palette[ia_c + di * (s + 1) / steps];
+                if (!gcolor_equal(sc, last)) {
+                  graphics_context_set_stroke_color(ctx, sc);
+                  last = sc;
+                }
+                graphics_draw_line(ctx, q0, q1);
               }
-              graphics_draw_line(ctx, q0, q1);
+              continue;
             }
-            continue;
           }
-          c = (GColor)s_palette[ia];
         }
 #else
         uint16_t z_here = s_z8[y][x];
