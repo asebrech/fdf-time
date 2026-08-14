@@ -25,6 +25,7 @@ for p in PLATFORMS:
         (p + "_boot.gif", "image/gif"),
         (p + "_rollover.gif", "image/gif"),
         (p + "_orbit.gif", "image/gif"),
+        (p + "_seconds.gif", "image/gif"),
         (p + "_steady.png", "image/png"),
     ):
         path = os.path.join(gifs_dir, name)
