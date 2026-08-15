@@ -304,9 +304,67 @@ void fdf_model_set_time(FdfModel *m, int hours, int minutes) {
   prv_place_pair(m->z_to, minutes, FDF_STAGGER, BORDER + DIGIT_H + ROW_GAP);
 }
 
-void fdf_model_set_demo42(FdfModel *m) {
+// --- launch splashes ---
+
+// NixOS snowflake splash: the official nixos-artwork lambda polygon,
+// 6 rotated instances, rasterized TOPOLOGY-FIRST: the channels separating
+// adjacent lambdas are sub-cell at this grid size, so plain thresholding
+// welds the arms into a gear (tried, rejected). Instead each candidate cell
+// is labeled with the lambda that owns it, a 1-cell channel is carved where
+// two arms touch, arms are regrown to >=2-cell thickness where free space
+// allows, and 180-degree (C2) symmetry is enforced — the logo's own
+// symmetry, the only one the square grid can honor. Pre-shearing for the
+// camera was also tried and rejected: it shreds arms into 1-cell stair
+// spikes; upright stamping leans with the camera like the digits do.
+// Bit (1 << col) set = plateau cell, col 0 leftmost.
+#define NIX_COLS 20
+#define NIX_ROWS 21
+static const uint32_t NIX_SPLASH[NIX_ROWS] = {
+  0x000000, 0x004620, 0x00ee70, 0x00fc70, 0x0078e0, 0x033bfc, 0x0337fc,
+  0x037000, 0x0370f0, 0x0f807f, 0x0fc03f, 0x0fe01f, 0x00f0ec, 0x0000ec,
+  0x03fecc, 0x03fdcc, 0x0071e0, 0x00e3f0, 0x00e770, 0x004620, 0x000000,
+};
+
+// Pebble: the slashed "e" from the official wordmark (repebble.com logo
+// PNG, last letter cropped and sampled) — the wordmark itself is 6 letters
+// and can never fit at 2-cell strokes; the slashed e is the brand's most
+// distinctive glyph. The slash gap right of the crossbar is a real feature:
+// keep it open.
+#define PEBBLE_COLS 18
+#define PEBBLE_ROWS 18
+static const uint32_t PEBBLE_SPLASH[PEBBLE_ROWS] = {
+  0x000fc0, 0x003ff0, 0x007ff8, 0x00f03c, 0x01e01e, 0x01c00e, 0x01c007,
+  0x03fc07, 0x03fff7, 0x007fff, 0x0001ff, 0x03800f, 0x01c00e, 0x01e01e,
+  0x00f03c, 0x007ff8, 0x003ff0, 0x000fc0,
+};
+
+static void prv_stamp(uint8_t z[FDF_ROWS][FDF_COLS], const uint32_t *bits,
+                      int cols, int rows) {
+  int col0 = FDF_BLEED + (INNER_COLS - cols) / 2;
+  int row0 = FDF_BLEED + (INNER_ROWS - rows) / 2;
+  for (int r = 0; r < rows; r++) {
+    for (int c = 0; c < cols; c++) {
+      if (bits[r] & (1u << c)) {
+        z[row0 + r][col0 + c] = FDF_Z_TOP;
+      }
+    }
+  }
+}
+
+void fdf_model_set_splash(FdfModel *m, int style) {
   prv_snapshot_current(m);
-  prv_place_pair(m->z_to, 42, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2);
+  switch (style) {
+    case 2:
+      prv_stamp(m->z_to, NIX_SPLASH, NIX_COLS, NIX_ROWS);
+      break;
+    case 4:  // 3 was Arch Linux, shipped briefly and removed — keep the gap
+      prv_stamp(m->z_to, PEBBLE_SPLASH, PEBBLE_COLS, PEBBLE_ROWS);
+      break;
+    default:  // 1 (and anything unknown): the "42" homage
+      prv_place_pair(m->z_to, 42, FDF_STAGGER / 2,
+                     (INNER_ROWS - DIGIT_H) / 2);
+      break;
+  }
 }
 
 void fdf_model_set_seconds(FdfModel *m, int seconds) {
@@ -368,6 +426,9 @@ void fdf_draw(FdfModel *m, GContext *ctx) {
       int32_t px = (sx8 * m->ax_cos - sy8 * m->ay_cos) >> 14;
       int32_t py = (sx8 * m->ax_sin + sy8 * m->ay_sin) >> 14;
       py -= (z8 * zheight8) >> 16;
+      // Tilt sway: shear the extrusion so tops lean, bases hold still.
+      px += (z8 * m->sway_x8) >> 16;
+      py += (z8 * m->sway_y8) >> 16;
 
       s_pts[y][x] = GPoint(m->center.x + px, m->center.y + py);
     }

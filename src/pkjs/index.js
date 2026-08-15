@@ -1,9 +1,9 @@
 var Clay = require('@rebble/clay');
 var clayConfig = require('./config');
 
-// The seconds peek gesture only exists in the classic display mode: if the
-// display is set to Seconds, a "Peek at seconds" shake choice snaps back to
-// Orbit (and vice versa), so the invalid combination can't be saved.
+// The seconds peek/toggle gestures only exist in the classic display mode:
+// if the display is set to Seconds, such a shake choice snaps back to
+// Orbit, so the invalid combination can't be saved.
 var customClay = function () {
   var clay = this;
   clay.on(clay.EVENTS.AFTER_BUILD, function () {

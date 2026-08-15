@@ -33,6 +33,23 @@ module.exports = [
       },
       {
         "type": "select",
+        "messageKey": "TimeFormat",
+        "defaultValue": "0",
+        "label": "Time format",
+        "options": [
+          { "label": "Watch setting", "value": "0" },
+          { "label": "12h (AM/PM)", "value": "1" },
+          { "label": "24h", "value": "2" }
+        ]
+      },
+      {
+        "type": "toggle",
+        "messageKey": "ShowAmPm",
+        "label": "AM/PM indicator (12h)",
+        "defaultValue": true
+      },
+      {
+        "type": "select",
         "messageKey": "Mode",
         "defaultValue": "0",
         "label": "Display mode",
@@ -52,6 +69,12 @@ module.exports = [
           { "label": "Eco (drifts once a minute)", "value": "1" },
           { "label": "Frozen", "value": "2" }
         ]
+      },
+      {
+        "type": "toggle",
+        "messageKey": "WaveRest",
+        "label": "Rest ocean while backlight is off",
+        "defaultValue": true
       }
     ]
   },
@@ -60,10 +83,16 @@ module.exports = [
     "items": [
       { "type": "heading", "defaultValue": "Behavior" },
       {
-        "type": "toggle",
+        "type": "select",
         "messageKey": "Splash42",
-        "label": "\"42\" splash on launch",
-        "defaultValue": true
+        "defaultValue": "1",
+        "label": "Splash on launch",
+        "options": [
+          { "label": "\"42\"", "value": "1" },
+          { "label": "NixOS", "value": "2" },
+          { "label": "Pebble", "value": "4" },
+          { "label": "Off", "value": "0" }
+        ]
       },
       {
         "type": "select",
@@ -74,8 +103,15 @@ module.exports = [
           { "label": "Orbit spin", "value": "1" },
           { "label": "Peek at seconds (until the minute ends)", "value": "2" },
           { "label": "Toggle seconds (until the next shake)", "value": "3" },
+          { "label": "Peek at date", "value": "4" },
           { "label": "Off", "value": "0" }
         ]
+      },
+      {
+        "type": "toggle",
+        "messageKey": "WakeFirst",
+        "label": "First shake only wakes the screen",
+        "defaultValue": false
       },
       {
         "type": "toggle",

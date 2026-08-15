@@ -25,9 +25,14 @@ typedef struct {
   uint16_t morph;                      // 0..65535 progress from z_from to z_to
   int32_t angle;                       // TRIG_MAX_ANGLE units; 0 = canonical view
   int32_t wave_phase;                  // terrain swell phase (color only)
+  // Tilt sway: screen-space shear of the extrusion axis, px<<8 per z<<8
+  // (same scale as the internal zheight8). Zero = straight extrusion; the
+  // driver (main.c) feeds it smoothed accelerometer tilt so plateau tops
+  // lean with the wrist while bases stay put.
+  int32_t sway_x8, sway_y8;
   // Two fitted framings: classic (HH/MM staggered pairs) and pair (a single
-  // centered pair — the seconds mode, zoomed larger). zoom8/center hold the
-  // active one, switched by fdf_model_set_mode.
+  // centered pair — the seconds display mode, zoomed larger). zoom8/center
+  // hold the active one, switched by fdf_model_set_mode.
   int32_t zoom8_classic, zoom8_pair;
   GPoint center_classic, center_pair;
   int32_t zoom8;                       // pixels per cell, 8-bit fraction
@@ -46,7 +51,11 @@ void fdf_set_style(int theme, int gradient);
 // Snapshot current (interpolated) altitudes into z_from, write the new time
 // into z_to and reset morph so an animation can play.
 void fdf_model_set_time(FdfModel *m, int hours, int minutes);
-void fdf_model_set_demo42(FdfModel *m);
+// A single centered pair in the classic framing (seconds/date peeks).
+// Launch splash: 1 = the "42" homage, 2 = NixOS snowflake, 4 = Pebble
+// slashed-e (3 was Arch, removed; unknown values fall back to "42").
+// Values are persisted in settings — never renumber after a store release.
+void fdf_model_set_splash(FdfModel *m, int style);
 // Seconds mode: one centered pair morphing every second.
 void fdf_model_set_seconds(FdfModel *m, int seconds);
 void fdf_model_set_mode(FdfModel *m, bool seconds_mode);

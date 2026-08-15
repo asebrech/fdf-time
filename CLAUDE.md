@@ -132,19 +132,107 @@ Run with the pebble-tool venv python inside the FHS env
   z=6 so digits stay the foreground).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map.
-- `src/c/main.c` — lifecycle: splash shows "42" then morphs into the
-  current view; minute boundaries trigger a morph `Animation`. Display
-  modes: classic HH/MM terrain, or seconds (a single centered SS pair at
-  a 1.5x-fitted framing, morphing every second, HH:MM as small text over
-  the ocean). The shake gesture is a 4-way setting: orbit spin / peek at
-  seconds (reverts where the minute morph begins) / sticky seconds toggle
-  (persisted under PEEK_KEY, survives relaunches; peek/toggle use the
-  CLASSIC framing so there is no camera jump, and both are guarded out of
-  the seconds display mode on both the Clay and watch sides) / off. Tap
-  debounce is 1.2 s — one shake fires several taps. Wave modes: silk
+- `src/c/main.c` — lifecycle: splash (select: "42" / NixOS snowflake /
+  off — key stays `Splash42`, old bool 0/1 values keep meaning) morphs
+  into the current view. Splash styles (fdf.c `fdf_model_set_splash`,
+  persisted values — never renumber): 1 "42", 2 NixOS snowflake, 4
+  Pebble slashed-e; all rasterized from official vector/logo art. Value
+  3 was Arch Linux — shipped briefly, user rejected it (a filled A is a
+  dense mesh blob, and the crossbar that makes it read "A" is sub-cell);
+  the number stays reserved, unknown values fall back to "42".
+  Two hard-won rules: (a) TOPOLOGY-FIRST — the NixOS lambdas' separating
+  channels are sub-cell, so cells are labeled per-lambda and a 1-cell
+  channel carved where two arms touch, C2 symmetry enforced (plain
+  thresholding welds a gear; the user rejected that only mildly, but
+  approved the carved version highly); (b) camera pre-shear (sampling
+  through the ax22/ay45 projection so the shape stands upright on
+  screen) WORKS for solid silhouettes (Arch — verified great) and FAILS
+  for thin-armed shapes (NixOS v2 — 1-cell stair spikes, user:
+  "dégueulasse"); round shapes (Pebble e) don't need it. Tux and Ubuntu
+  CoF were tried and rejected: a filled Tux silhouette is an anonymous
+  blob, the CoF's heads/moats collapse at 20 cells. Minute boundaries trigger a morph
+  `Animation`. Display modes: classic HH/MM terrain, or seconds (a
+  single centered SS pair at a 1.5x-fitted "pair" framing, morphing
+  every second, HH:MM as small text over the ocean; briefly removed
+  2026-08-14 then restored on user request, as was the sticky toggle —
+  don't remove them again). The shake gesture is a 5-way setting: orbit
+  spin (1) / peek at seconds (2: SS terrain + HH:MM overlay in the
+  CLASSIC framing so there is no camera jump, reverts where the minute
+  morph begins or on a second shake) / sticky seconds toggle (3:
+  persisted under PEEK_KEY, survives relaunches; 2 and 3 exist in
+  classic display mode only, guarded on both Clay and watch sides) /
+  peek at date (4: DD terrain + weekday-month overlay via `s_overlay`,
+  6 s auto-revert, allowed in every display mode; overlays the
+  underlying view — s_peeking stays untouched so the revert lands back
+  on it) / off (0). Buttons are as impossible as touch on watchfaces:
+  the kernel's shell/normal/watchface.c owns the ClickManager
+  (launcher, timeline, quick-launch) — a watchface never sees clicks.
+  Tap handling: events within 1.2 s are one physical shake (burst
+  grouping, `s_burst_ms`). Wake-first gate (`wake_first`, Clay
+  `WakeFirst`, default OFF — the default orbit action is harmless, even
+  pleasant, on the waking shake itself): a shake only acts if the screen is lit for
+  >1 s (backlight hardware; the backlight service is now ALWAYS
+  subscribed on CAN_REST_WAVES hardware — s_lit feeds both the wave
+  rest and this gate) or a previous shake landed <6 s ago — so the
+  first jolt wakes/arms instead of triggering, same model as the
+  firmware's touch session. The arm-window path is what keeps gestures
+  usable in daylight (ALS keeps the backlight dark) and on old watches. TOUCH IS
+  IMPOSSIBLE ON WATCHFACES, don't retry: PebbleOS reserves touch for
+  watchapps — applib's prv_get_state() returns NULL under
+  sys_app_is_watchface() ("Touch is reserved for watchapps; watchfaces
+  must not consume it", firmware touch_service.c), so touch_service
+  subscriptions AND the recognizer/touch-bridge route
+  (window_attach_recognizer + window_set_touch_bridge_disabled +
+  app_touch_navigation_enable) all silently no-op. Both were implemented
+  on 2026-08-14 and removed after failing on the real Time 2; the SDK
+  compiles them without complaint. Revisit only if the firmware grows a
+  watchface opt-in. Guard new-HW APIs by testing
+  the `_PBL_API_EXISTS_<fn>` marker macro directly — `PBL_API_EXISTS()`
+  inside `#if` trips -Wexpansion-to-defined. Wave modes: silk
   (66 ms AppTimer interpolates the phase continuously), fluid (second
   ticks), eco (minute drift), frozen; 1-bit has no terrain and stays on
-  MINUTE_UNIT unless the seconds view needs SECOND_UNIT.
+  MINUTE_UNIT unless the seconds view needs SECOND_UNIT. Wave rest
+  (`wave_rest`, Clay `WaveRest`, default on): the swell pauses while the
+  backlight is off — silk timer stopped, fluid dropped to minute ticks —
+  and on wake the phase is REBASED (`s_wave_offset`) so it resumes from
+  the frozen spot instead of teleporting to the wall clock. Gated by
+  `PBL_API_EXISTS(backlight_service_subscribe)` (`CAN_REST_WAVES`): the
+  BacklightService only exists on Core Devices boards (emery/flint/
+  gabbro); OG Pebbles ship stubs where `light_is_on()` is a literal 0,
+  so nothing outside the guard may touch it (waves would rest forever).
+  Daylight caveat: the ALS keeps the backlight off when it's bright, so
+  on-wrist in daylight the ocean stays frozen. QEMU: `light_is_on()` is
+  false at boot (waves rest immediately on emery/gabbro) and
+  `sendkey left` on the QEMU monitor is the backlight trigger — the
+  story/rollover capture keepalive already holds it lit during recording.
+  Tilt sway (accelerometer parallax shear of the extrusion) was FULLY
+  BUILT on 2026-08-15 and REMOVED the same day — blocked by THREE
+  firmware defects on the Time 2, all verified in PebbleOS source and
+  on-watch; do not re-attempt until they are fixed upstream:
+  (1) accel_data unsubscribe with an in-flight event kernel_free()s the
+  app's STATIC accel session (applib accel_service.c deferred_free +
+  prv_is_session_task wrongly including PebbleTask_App) — kernel heap
+  corruption, deterministic crashloop at a firmware PC;
+  (2) reconfiguring a live subscription (set_sampling_rate /
+  set_samples_per_update) permanently wedges delivery — zero callbacks
+  ever after, measured;
+  (3) a continuous data subscription raises the LSM6DSO ODR, which
+  detunes the hardware wake-up so badly that SYSTEM MOTION WAKE stops
+  working while the stream runs (driver's own comments warn wake-up
+  duration is not rescaled on ODR change).
+  Also: accel_service_peek without a data subscriber returns stale
+  burst values (kernel samples the IMU slowly) — useless for motion.
+  The FdfModel.sway_x8/y8 shear plumbing in fdf.c is kept (zeroed) for
+  a future return; settings byte reserved1 was tilt_sway.
+  Crash-debugging recipe: `pebble logs --phone` catches "App fault ...
+  PC: 0x..."; app code runs from RAM ~0x2005xxxx (log a function
+  pointer to get the slide — PCs in 0x12xxxxxx are FIRMWARE, don't
+  addr2line them against the app ELF, a wrong base gives convincing
+  nonsense). Only ONE Dev Connect session at a time — a screenshot
+  kills a running logs tail. Scale is
+  zoom8/8000 per mg, inputs clamped to ±1100 mg so motion spikes can't
+  kick the terrain. Test in QEMU: `pebble emu-accel gravity+x` while a
+  sendkey-left keepalive holds the backlight (and thus the timer) alive.
 - `src/pkjs/` — phone-side JS: `config.js` is the Clay settings page
   (theme, wave mode, gradient on/off, splash, shake orbit, BT vibe),
   `index.js` just instantiates Clay. Settings arrive in `main.c` via
@@ -218,7 +306,12 @@ hardcoded coordinates. Test at minimum on `basalt` (color rect), `chalk`
 - Watchface C code runs on a microcontroller: small heap (~64–128 KB
   depending on platform), no floats in hot paths on aplite, always destroy
   what you create in `window_unload`/`deinit`.
-- `clock_is_24h_style()` must be respected for time formatting.
+- `clock_is_24h_style()` must be respected for time formatting. The Clay
+  `TimeFormat` select (0 auto/1 12h/2 24h, `prv_use_24h`) can override it;
+  in 12h the seconds/date overlay text carries AM/PM and the classic
+  terrain draws a small AM/PM tag (top-right on rect — the HH pair leans
+  left so the ocean is free there; top-center on round). 24h shows no
+  tag, and the Clay `ShowAmPm` toggle (default on) can hide it in 12h.
 
 ## Claude Code skill
 
