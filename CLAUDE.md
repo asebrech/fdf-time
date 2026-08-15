@@ -43,8 +43,16 @@ Run with the pebble-tool venv python inside the FHS env
   rollover, orbit GIFs, then `_steady.png`.
 - ALWAYS verify every GIF with a contact sheet before uploading
   (`ffmpeg -i x.gif -vf "select=not(mod(n\,5)),scale=60:-1,tile=13x1"`).
-- `cdp.py` — minimal Chrome DevTools Protocol driver used to operate store
-  web UIs when no API exists (Rebble dev-portal, rePebble dashboard). Launch
+- Store web UIs: PREFER the Claude-in-Chrome browser tools when available
+  (the user's own Chrome, already logged in to both portals — used
+  successfully 2026-08-15 for the Rebble release + both store descriptions;
+  form_input + file_upload by element ref, no coordinate fragility). The
+  release-publish click still belongs to the user on Rebble; rePebble
+  code-only releases can skip the UI entirely via the release API with
+  just pbwFile+version+notes (NO replaceScreenshots — listing stays).
+- `cdp.py` — fallback: minimal Chrome DevTools Protocol driver to operate
+  store web UIs when Claude-in-Chrome isn't connected (Rebble dev-portal,
+  rePebble dashboard). Launch
   Brave detached with `setsid nohup brave --remote-debugging-port=9222
   --remote-allow-origins='*' --user-data-dir=<scratch>/brave-profile <url> &`,
   let the user log in, then drive: `cdp.py screenshot/navigate/eval-file/
