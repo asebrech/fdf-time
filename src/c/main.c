@@ -11,6 +11,11 @@
 // Sticky-toggle state (shake_action 3): persisted so leaving and returning
 // to the watchface resumes on the seconds view the user toggled into.
 #define PEEK_KEY 2
+// User-drawn splash grid (splash_style 5): FDF_CUSTOM_ROWS row bitmasks,
+// drawn cell-by-cell in the phone-side pixel-grid editor (which can also
+// stamp any emoji/text the phone can render). Stored outside the settings
+// struct — it is 100 bytes and has its own lifecycle.
+#define CUSTOM_KEY 3
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift),
@@ -18,12 +23,17 @@ typedef struct {
   uint8_t gradient;     // per-line wall gradients on/off
   uint8_t display_mode; // 0 classic HH/MM terrain, 1 seconds SS terrain
   uint8_t splash_style; // launch splash: 0 off, 1 "42", 2 NixOS, 4 Pebble
-                        // slashed-e (3 was Arch, removed). Was a bool
-                        // ("42" on/off): 0/1 keep meaning when persisted.
+                        // slashed-e, 5 user-drawn grid, 6 today's date,
+                        // 7 orbit (the time rises during a full camera
+                        // turn). 3 was Arch, removed. Was a bool ("42"
+                        // on/off): 0/1 keep meaning when persisted.
   uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (reverts
-                        // at the minute), 3 toggle seconds (sticky until the
-                        // next shake). 2/3 exist in classic mode only;
-                        // values match the pre-select boolean so persisted
+                        // at the minute), 3 toggle seconds (sticky until
+                        // the next shake), 4-8 view peeks with 6 s
+                        // auto-revert: 4 date, 5 the user's drawing (falls
+                        // back to orbit if none saved), 6 "42", 7 NixOS,
+                        // 8 Pebble. 2/3 exist in classic mode only; values
+                        // match the pre-select boolean so persisted
                         // settings keep meaning orbit.
   bool bt_vibe;         // double pulse when the phone connection drops
   uint8_t wave_rest;    // pause the swell while the backlight is off; only
@@ -46,6 +56,9 @@ typedef struct {
 } Settings;
 
 static Settings s_settings;
+// The user-drawn splash, same row-bitmask convention as the built-ins.
+static uint32_t s_custom[FDF_CUSTOM_ROWS];
+static bool s_has_custom;
 
 static Window *s_window;
 static Layer *s_layer;
@@ -79,9 +92,18 @@ static uint64_t s_burst_ms;
 // touch for watchapps — every applib touch entry point silently no-ops
 // when sys_app_is_watchface() (see touch_service.c in the firmware).
 // Don't try again unless the firmware grows a watchface opt-in.
-static bool s_date_peek;
-static AppTimer *s_date_timer;
-#define DATE_PEEK_MS 6000
+// View peek (shake_action 4-8): one scene from the shared catalog — date,
+// the user's drawing, or a logo splash — rises from the ocean for a
+// moment, then reverts. Full-region scenes (drawing, NixOS, Pebble)
+// temporarily force the classic framing: the pair framing of the seconds
+// display mode would overflow the screen; the revert hands the mode its
+// own framing back.
+static bool s_view_peek;
+static AppTimer *s_view_timer;
+#define VIEW_PEEK_MS 6000
+// Date splash (splash_style 6): the weekday+month overlay must draw while
+// the splash holds, outside any peek state.
+static bool s_splash_overlay;
 // Silk wave mode: a repeating timer interpolates the swell phase between
 // seconds. ~15 fps is ample — the swell moves a fraction of a cell per
 // second, so the per-frame delta is sub-pixel smooth.
@@ -125,7 +147,8 @@ static void prv_update_proc(Layer *layer, GContext *ctx) {
   // the pre-trimetric density. No-op on 1-bit displays.
   graphics_context_set_antialiased(ctx, true);
   fdf_draw(&s_model, ctx);
-  if (s_settings.display_mode == 1 || s_peeking || s_date_peek) {
+  if (s_settings.display_mode == 1 || s_peeking || s_view_peek ||
+      s_splash_overlay) {
     // Seconds/date views: the terrain shows SS (or the day number); the
     // overlay floats small over the ocean's top band in the theme's
     // foreground color.
@@ -205,8 +228,9 @@ static const AnimationImplementation SPIN_IMPL = {
 static void prv_show_time(void);
 static void prv_show_seconds_now(void);
 static void prv_subscribe_ticks(void);
-static void prv_enter_date_peek(void);
-static void prv_exit_date_peek(void);
+static void prv_enter_view_peek(void);
+static void prv_exit_view_peek(void);
+static void prv_start_spin(void);
 
 static uint64_t prv_now_ms(void) {
   time_t s;
@@ -292,13 +316,16 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
       return;
     }
   }
-  // Date peek works in every display mode (the date is never on screen
-  // otherwise).
-  if (s_settings.shake_action == 4) {
-    if (s_date_peek) {
-      prv_exit_date_peek();
+  // View peeks (date / drawing / logos) work in every display mode. With
+  // no drawing saved yet, that choice falls back to the orbit so the
+  // gesture is never dead.
+  if (s_settings.shake_action >= 4 && s_settings.shake_action <= 8) {
+    if (s_view_peek) {
+      prv_exit_view_peek();
+    } else if (s_settings.shake_action == 5 && !s_has_custom) {
+      prv_start_spin();
     } else {
-      prv_enter_date_peek();
+      prv_enter_view_peek();
     }
     return;
   }
@@ -371,40 +398,61 @@ static void prv_show_time(void) {
   prv_start_morph_ms(MORPH_DURATION_MS);
 }
 
-// --- date peek ---
+// --- view peek (shared scene catalog) ---
 
-static void prv_show_date_now(void) {
-  time_t now = time(NULL);
-  struct tm *t = localtime(&now);
-  // The terrain carries the day number; weekday + month go in the overlay.
-  strftime(s_overlay, sizeof(s_overlay), "%a %b", t);
-  fdf_model_set_seconds(&s_model, t->tm_mday);
+// Stamp one scene onto the terrain: 4 date (day-number pair, weekday+month
+// overlay), 5 the user's drawing, 6/7/8 the "42"/NixOS/Pebble splashes.
+// Full-region scenes force the classic framing (see the s_view_peek note);
+// the "42" and the date are pairs and look right in either framing.
+static void prv_show_view_now(int action) {
+  s_overlay[0] = '\0';
+  switch (action) {
+    case 4: {
+      time_t now = time(NULL);
+      struct tm *t = localtime(&now);
+      strftime(s_overlay, sizeof(s_overlay), "%a %b", t);
+      fdf_model_set_seconds(&s_model, t->tm_mday);
+      break;
+    }
+    case 5:
+      fdf_model_set_mode(&s_model, false);
+      fdf_model_set_custom(&s_model, s_custom);
+      break;
+    default:
+      if (action != 6) {
+        fdf_model_set_mode(&s_model, false);
+      }
+      fdf_model_set_splash(&s_model, action == 6 ? 1 : action == 7 ? 2 : 4);
+      break;
+  }
   prv_start_morph_ms(SECONDS_MORPH_MS);
 }
 
-static void prv_date_revert_cb(void *data) {
-  s_date_timer = NULL;
-  if (s_date_peek) {
-    s_date_peek = false;
+static void prv_view_revert_cb(void *data) {
+  s_view_timer = NULL;
+  if (s_view_peek) {
+    s_view_peek = false;
+    fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
     prv_show_time();  // lands back on time, or seconds if s_peeking held
   }
 }
 
-static void prv_enter_date_peek(void) {
-  if (s_date_timer) {
-    app_timer_cancel(s_date_timer);
+static void prv_enter_view_peek(void) {
+  if (s_view_timer) {
+    app_timer_cancel(s_view_timer);
   }
-  s_date_peek = true;
-  prv_show_date_now();
-  s_date_timer = app_timer_register(DATE_PEEK_MS, prv_date_revert_cb, NULL);
+  s_view_peek = true;
+  prv_show_view_now(s_settings.shake_action);
+  s_view_timer = app_timer_register(VIEW_PEEK_MS, prv_view_revert_cb, NULL);
 }
 
-static void prv_exit_date_peek(void) {
-  if (s_date_timer) {
-    app_timer_cancel(s_date_timer);
-    s_date_timer = NULL;
+static void prv_exit_view_peek(void) {
+  if (s_view_timer) {
+    app_timer_cancel(s_view_timer);
+    s_view_timer = NULL;
   }
-  s_date_peek = false;
+  s_view_peek = false;
+  fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
   prv_show_time();
 }
 
@@ -412,7 +460,7 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   // During the splash the 42 owns the stage: hold the time morph until
   // prv_splash_done plays it (the swell below still rolls). A date peek
   // likewise holds the stage: its revert timer restores the fresh view.
-  if (!s_splash_timer && s_date_peek) {
+  if (!s_splash_timer && s_view_peek) {
     // hold
   } else if (!s_splash_timer && s_peeking) {
     if ((units_changed & MINUTE_UNIT) && s_settings.shake_action == 2) {
@@ -484,6 +532,10 @@ static void prv_backlight_handler(bool on) {
 
 static void prv_splash_done(void *data) {
   s_splash_timer = NULL;
+  s_splash_overlay = false;
+  // Full-region splashes force the classic framing; hand the mode its own
+  // framing back before the time morph.
+  fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
   prv_show_time();
 }
 
@@ -523,11 +575,11 @@ static void prv_apply_settings(void) {
     s_peeking = false;
     persist_write_bool(PEEK_KEY, false);
   }
-  if (s_date_timer) {
-    app_timer_cancel(s_date_timer);
-    s_date_timer = NULL;
+  if (s_view_timer) {
+    app_timer_cancel(s_view_timer);
+    s_view_timer = NULL;
   }
-  s_date_peek = false;
+  s_view_peek = false;
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 2) {
     s_model.wave_phase = 0;
@@ -566,6 +618,36 @@ static void prv_apply_settings(void) {
   }
 }
 
+// The editor serializes the grid as 6 lowercase hex chars per row (22 bits
+// used), rows concatenated — 150 chars total. Anything else (including the
+// empty string Clay sends before the user ever draws) is ignored.
+static bool prv_parse_custom(const char *s) {
+  if (strlen(s) != (size_t)(FDF_CUSTOM_ROWS * 6)) {
+    return false;
+  }
+  uint32_t rows[FDF_CUSTOM_ROWS];
+  for (int r = 0; r < FDF_CUSTOM_ROWS; r++) {
+    uint32_t v = 0;
+    for (int i = 0; i < 6; i++) {
+      char c = s[r * 6 + i];
+      int d;
+      if (c >= '0' && c <= '9') {
+        d = c - '0';
+      } else if (c >= 'a' && c <= 'f') {
+        d = c - 'a' + 10;
+      } else if (c >= 'A' && c <= 'F') {
+        d = c - 'A' + 10;
+      } else {
+        return false;
+      }
+      v = (v << 4) | d;
+    }
+    rows[r] = v & ((1u << FDF_CUSTOM_COLS) - 1);
+  }
+  memcpy(s_custom, rows, sizeof(s_custom));
+  return true;
+}
+
 // Clay sends select values as strings and toggles as ints; accept both.
 static int prv_tuple_int(const Tuple *t) {
   return t->type == TUPLE_CSTRING ? atoi(t->value->cstring)
@@ -574,6 +656,13 @@ static int prv_tuple_int(const Tuple *t) {
 
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *t;
+  bool custom_rx = false;
+  if ((t = dict_find(iter, MESSAGE_KEY_CustomMap)) &&
+      t->type == TUPLE_CSTRING && prv_parse_custom(t->value->cstring)) {
+    persist_write_data(CUSTOM_KEY, s_custom, sizeof(s_custom));
+    s_has_custom = true;
+    custom_rx = true;
+  }
   if ((t = dict_find(iter, MESSAGE_KEY_Theme))) {
     s_settings.theme = prv_tuple_int(t);
   }
@@ -613,7 +702,19 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   }
   persist_write_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
   prv_apply_settings();
-  if (!s_splash_timer) {
+  if (custom_rx &&
+      (s_settings.splash_style == 5 || s_settings.shake_action == 5)) {
+    // Fresh drawing with a consumer selected: preview it right away, like a
+    // launch splash — the terrain morphs into the drawing, holds a beat,
+    // then melts back into the time.
+    if (s_splash_timer) {
+      app_timer_cancel(s_splash_timer);
+    }
+    fdf_model_set_mode(&s_model, false);  // full-region: classic framing
+    fdf_model_set_custom(&s_model, s_custom);
+    prv_start_morph_ms(MORPH_DURATION_MS);
+    s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  } else if (!s_splash_timer) {
     prv_show_time();  // re-render immediately in the (possibly new) mode
   }
 }
@@ -634,6 +735,10 @@ static void prv_load_settings(void) {
   };
   if (persist_exists(SETTINGS_KEY)) {
     persist_read_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
+  }
+  if (persist_exists(CUSTOM_KEY)) {
+    s_has_custom = persist_read_data(CUSTOM_KEY, s_custom, sizeof(s_custom)) ==
+                   (int)sizeof(s_custom);
   }
   // Resume a persisted sticky toggle (the splash then morphs into the
   // seconds view instead of the time).
@@ -663,7 +768,33 @@ static void prv_window_load(Window *window) {
   // are live during the splash so the swell rolls; the tick handler holds
   // back the time morph until the splash is done.
   prv_apply_settings();
-  if (s_settings.splash_style != 0) {
+  if (s_settings.splash_style == 5 && s_has_custom) {
+    fdf_model_set_mode(&s_model, false);  // full-region: classic framing
+    fdf_model_set_custom(&s_model, s_custom);
+    prv_start_morph_ms(MORPH_DURATION_MS);
+    s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  } else if (s_settings.splash_style == 6) {
+    // Date splash: today's date rises first, then melts into the time.
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(s_overlay, sizeof(s_overlay), "%a %b", t);
+    s_splash_overlay = true;
+    fdf_model_set_seconds(&s_model, t->tm_mday);
+    prv_start_morph_ms(MORPH_DURATION_MS);
+    s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  } else if (s_settings.splash_style == 7) {
+    // Orbit splash: no intermediate scene — the time rises while the
+    // camera makes one full turn.
+    prv_show_time();
+    prv_start_spin();
+  } else if (s_settings.splash_style != 0) {
+    // Style 5 with no grid yet falls through here and set_splash's default
+    // case renders the "42". NixOS and Pebble span the full inner region:
+    // like the custom grid they need the classic framing (the "42" is a
+    // pair and looks right in either framing).
+    if (s_settings.splash_style == 2 || s_settings.splash_style == 4) {
+      fdf_model_set_mode(&s_model, false);
+    }
     fdf_model_set_splash(&s_model, s_settings.splash_style);
     prv_start_morph_ms(MORPH_DURATION_MS);
     s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
@@ -677,9 +808,9 @@ static void prv_window_unload(Window *window) {
     app_timer_cancel(s_splash_timer);
     s_splash_timer = NULL;
   }
-  if (s_date_timer) {
-    app_timer_cancel(s_date_timer);
-    s_date_timer = NULL;
+  if (s_view_timer) {
+    app_timer_cancel(s_view_timer);
+    s_view_timer = NULL;
   }
   animation_unschedule_all();
 #if defined(PBL_COLOR)
@@ -704,7 +835,9 @@ static void prv_window_unload(Window *window) {
 static void prv_init(void) {
   prv_load_settings();
   app_message_register_inbox_received(prv_inbox_received);
-  app_message_open(256, 64);
+  // Inbox holds one Clay save: every settings key plus the 150-char custom
+  // grid string — 256 was no longer enough with the grid.
+  app_message_open(512, 64);
 
   s_window = window_create();
   window_set_background_color(s_window, GColorBlack);

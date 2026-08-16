@@ -367,6 +367,16 @@ void fdf_model_set_splash(FdfModel *m, int style) {
   }
 }
 
+// The editor grid is exactly the inner region; if these ever diverge the
+// stamp would decenter, so fail the build instead.
+typedef char fdf_custom_dims_check[(FDF_CUSTOM_COLS == INNER_COLS &&
+                                    FDF_CUSTOM_ROWS == INNER_ROWS) ? 1 : -1];
+
+void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]) {
+  prv_snapshot_current(m);
+  prv_stamp(m->z_to, rows, FDF_CUSTOM_COLS, FDF_CUSTOM_ROWS);
+}
+
 void fdf_model_set_seconds(FdfModel *m, int seconds) {
   prv_snapshot_current(m);
   prv_place_pair(m->z_to, seconds, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2);

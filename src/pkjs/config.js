@@ -83,14 +83,22 @@ module.exports = [
     "items": [
       { "type": "heading", "defaultValue": "Behavior" },
       {
+        "type": "pixelGrid",
+        "messageKey": "CustomMap",
+        "label": "Your drawing",
+        "defaultValue": ""
+      },
+      {
         "type": "select",
         "messageKey": "Splash42",
         "defaultValue": "1",
         "label": "Splash on launch",
         "options": [
           { "label": "\"42\"", "value": "1" },
+          { "label": "My drawing", "value": "5" },
+          { "label": "Today's date", "value": "6" },
           { "label": "NixOS", "value": "2" },
-          { "label": "Pebble", "value": "4" },
+          { "label": "Orbit", "value": "7" },
           { "label": "Off", "value": "0" }
         ]
       },
@@ -101,9 +109,11 @@ module.exports = [
         "label": "Shake gesture",
         "options": [
           { "label": "Orbit spin", "value": "1" },
-          { "label": "Peek at seconds (until the minute ends)", "value": "2" },
-          { "label": "Toggle seconds (until the next shake)", "value": "3" },
-          { "label": "Peek at date", "value": "4" },
+          { "label": "Show my drawing", "value": "5" },
+          { "label": "Show the date", "value": "4" },
+          { "label": "Show the seconds", "value": "2" },
+          { "label": "Show \"42\"", "value": "6" },
+          { "label": "Show NixOS", "value": "7" },
           { "label": "Off", "value": "0" }
         ]
       },

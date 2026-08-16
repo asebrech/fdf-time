@@ -140,11 +140,69 @@ Run with the pebble-tool venv python inside the FHS env
   z=6 so digits stay the foreground).
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map.
-- `src/c/main.c` — lifecycle: splash (select: "42" / NixOS snowflake /
-  off — key stays `Splash42`, old bool 0/1 values keep meaning) morphs
-  into the current view. Splash styles (fdf.c `fdf_model_set_splash`,
-  persisted values — never renumber): 1 "42", 2 NixOS snowflake, 4
-  Pebble slashed-e; all rasterized from official vector/logo art. Value
+- User drawing (2026-08-15, from a store user's request): a 22×25 1-bit
+  grid (`FDF_CUSTOM_COLS/ROWS` — exactly the inner region, same on all
+  platforms) drawn in a custom Clay component (`src/pkjs/pixel-grid.js`,
+  its own always-visible "Your drawing" section) with TWO consumers: splash
+  value 5 ("My drawing") and shake_action 5 ("Show my drawing" — 6 s
+  auto-revert peek like the date peek, falls back to orbit when no drawing
+  is saved so the gesture is never dead). Serialized as 6 lowercase hex
+  chars per row (bit 1<<col = filled, col 0 leftmost — same convention as
+  the C splash tables), 150 chars in messageKey `CustomMap`, persisted raw
+  (100 B) under `CUSTOM_KEY 3`; `app_message_open` inbox is 512 for this.
+  On save with either consumer selected the watch replays the drawing like
+  a launch splash (morph in, hold, melt back) so the user sees it land.
+  FRAMING RULE: the grid spans the full inner region, so it must render in
+  the CLASSIC framing — in the seconds display mode the pair framing would
+  overflow the screen. Every full-region stamp (custom grid, NixOS, Pebble
+  splashes; NOT the "42", which is a pair) forces
+  `fdf_model_set_mode(false)` before stamping, and `prv_splash_done` /
+  the peek revert restore the mode's own framing (verified: heart fits in
+  seconds mode, then the SS pair returns). The editor is WYSIWYG at native
+  cell resolution — this deliberately sidesteps the whole
+  downsample-fine-art problem that made the logo splashes painful — plus a
+  "Stamp" field that rasterizes any emoji/short text the phone can render
+  (alpha coverage ≥0.45 for the silhouette; on bright-bodied glyphs cells
+  darker than 0.55× the body median luminance are carved: eyes/mouths;
+  cells brighter than body median + 80 are engraved too — white-on-solid
+  glyphs like 🆘/boxed arrows/🎱 come out as letters in relief, while
+  bright bodies self-guard since +80 is unreachable and gloss shading
+  stays under the margin; 1-cell orphans dropped). Two symmetry fixes (user: faces came out
+  lopsided): center the INK box, not the advance width (emoji ink is often
+  off-center in its advance — a sub-cell offset flips edge columns), and a
+  left-right symmetry snap (mirror-averaged coverage) that engages only
+  when <15% of mirrored silhouette pairs mismatch — asymmetric glyphs
+  (letters, 🌙, hands) are untouched, and only the silhouette is snapped,
+  never the carve (a 😉 keeps its wink). Validated on a glyph battery:
+  bold shapes (🙂❤️⭐, letters) come out great, detailed ones (🌍👌)
+  blob — acceptable because the user sees and hand-edits.
+  Editor UX: the component folds behind a settings-row header (label +
+  live pixel thumbnail + chevron), everything inside stacked full-width
+  (side-by-side controls got crushed on phones). Undo/redo buttons keep a
+  60-entry history, one entry per finished gesture (a whole drag stroke,
+  a stamp, a clear — not per cell). With no saved drawing yet the grid
+  opens prefilled with a stamped 😎 (reaches the watch only on Save).
+  Headless JS testing without Chrome: pypkjs's STPyV8 runs the component
+  fine — eval the module with a stub DOM/canvas (see the session's
+  test_raster.py pattern: fake measureText/fillText/getImageData drawing
+  synthetic shapes) to unit-test rasterizer changes AND syntax-check the
+  file before shipping; waf does NOT parse JS, a syntax error only
+  explodes at runtime on the phone.
+  CRITICAL Clay-component lesson: Clay embeds custom components into the
+  config page with toSource() — functions are serialized WITHOUT module
+  closure, so a component must be fully self-contained (all helpers inside
+  initialize(); manipulator get/set called before initialize can only stash
+  the raw value). Referencing a module-level helper compiles fine and dies
+  on-page with ReferenceError, killing every item after it in the config.
+- `src/c/main.c` — lifecycle: splash (key stays `Splash42`, old bool 0/1
+  values keep meaning) morphs into the current view. Splash styles
+  (persisted values — never renumber): 1 "42", 2 NixOS snowflake, 4
+  Pebble slashed-e (those three in fdf.c `fdf_model_set_splash`,
+  rasterized from official vector/logo art), 5 user drawing, 6 today's
+  date (day terrain + weekday-month overlay via `s_splash_overlay`),
+  7 orbit (no scene: the time rises during one full camera turn —
+  verified by log; QEMU screenshots are too slow to sample a 1.4 s
+  animation). Value
   3 was Arch Linux — shipped briefly, user rejected it (a filled A is a
   dense mesh blob, and the crossbar that makes it read "A" is sub-cell);
   the number stays reserved, unknown values fall back to "42".
@@ -163,16 +221,32 @@ Run with the pebble-tool venv python inside the FHS env
   single centered SS pair at a 1.5x-fitted "pair" framing, morphing
   every second, HH:MM as small text over the ocean; briefly removed
   2026-08-14 then restored on user request, as was the sticky toggle —
-  don't remove them again). The shake gesture is a 5-way setting: orbit
+  don't remove them again). The shake gesture is a 9-way setting: orbit
   spin (1) / peek at seconds (2: SS terrain + HH:MM overlay in the
   CLASSIC framing so there is no camera jump, reverts where the minute
   morph begins or on a second shake) / sticky seconds toggle (3:
   persisted under PEEK_KEY, survives relaunches; 2 and 3 exist in
   classic display mode only, guarded on both Clay and watch sides) /
-  peek at date (4: DD terrain + weekday-month overlay via `s_overlay`,
-  6 s auto-revert, allowed in every display mode; overlays the
-  underlying view — s_peeking stays untouched so the revert lands back
-  on it) / off (0). Buttons are as impossible as touch on watchfaces:
+  view peeks 4-8 (`s_view_peek` + `prv_show_view_now`, one generic
+  machinery: 4 date — DD terrain + weekday-month overlay, 5 the user's
+  drawing — falls back to orbit when none saved, 6 "42", 7 NixOS,
+  8 Pebble; 6 s auto-revert, allowed in every display mode; full-region
+  scenes force classic framing, the revert restores the mode's own;
+  overlays the underlying view — s_peeking stays untouched so the
+  revert lands back on it) / off (0). The scene catalog is deliberately
+  SHARED with the splash select (2026-08-16 user request): both sides
+  offer 42/drawing/date and orbit; only the seconds views stay
+  shake-only (they already are a display mode). The Pebble logo entries
+  (splash 4, shake 8) were REMOVED from the Clay UI on 2026-08-16 —
+  superseded by the user drawing — but the watch still renders those
+  persisted values so store users who had picked it keep it; don't
+  reuse the numbers. NixOS was pulled the same day and immediately
+  reinstated on user request ("laisse nixos") — it stays. The sticky
+  seconds toggle (shake 3) was also dropped from the UI on 2026-08-16
+  ("on simplifie" — this supersedes the earlier "don't remove" note,
+  which was about removing the FEATURE; the watch code and persisted
+  value still work). Final shake list: Orbit / drawing / date / seconds
+  (2, label "Show the seconds", no parenthetical) / "42" / NixOS / Off. Buttons are as impossible as touch on watchfaces:
   the kernel's shell/normal/watchface.c owns the ClickManager
   (launcher, timeline, quick-launch) — a watchface never sees clicks.
   Tap handling: events within 1.2 s are one physical shake (burst
@@ -248,10 +322,40 @@ Run with the pebble-tool venv python inside the FHS env
   toggles as ints; `prv_tuple_int` handles both), persist under
   `SETTINGS_KEY`, and apply live via `prv_apply_settings` (re-subscribes
   tick/tap/connection services; safe to call repeatedly).
-- Headless settings test: run `pebble emu-app-config --emulator basalt &`,
-  find the pebble process's listening port (`ss -tlnp`), then
+- Headless settings test: run `pebble emu-app-config --emulator basalt` in
+  the harness background (sandboxed `setsid ... &` children are killed when
+  the Bash call ends — servers silently die), find its port with
+  `ss -tlnp | grep '"pebble"'` (the process is named "pebble", NOT python —
+  the python ports belong to pypkjs, whose server answers /close with a
+  misleading 500), then
   `curl "http://localhost:<port>/close?<urlencoded settings JSON>"` — this
-  is exactly what Clay's Save button does.
+  is exactly what Clay's Save button does. The /close server is ONE-SHOT:
+  each save needs a fresh emu-app-config. Payload can be flat
+  {"Key":"val"} or Clay's native {"Key":{"value":...}}.
+- pypkjs localStorage corruption: its dumbdbm-backed store
+  (`~/.local/share/pebble-sdk/4.33/<platform>/localstorage/<uuid>.*` inside
+  the FHS env) reuses blocks without truncating, so a SHRINKING
+  clay-settings value leaves trailing junk that crashes Clay's JSON.parse
+  ("Unexpected non-whitespace character after JSON at position N") — Clay
+  then never answers showConfiguration and emu-app-config times out or
+  500s. Fix: rm those files and restart the emulator.
+- `pebble emu-tap` stopped delivering tap events to the app in the
+  2026-08-15 session (no accel_tap callback fires at all — verified with an
+  APP_LOG first thing in the handler, on fresh emulators, with the orbit
+  action too; story_capture used it successfully at v1.2.0). Don't burn
+  time re-debugging app code when a tap-driven feature "doesn't work" in
+  QEMU — verify the settings landed (the save replay proves that path) and
+  test the gesture on the real watch.
+- Testing the Clay page in Chrome: decode the page from the newest
+  `~/pebble-tool-emu-app-config-*.html` (URL fragment after '#',
+  urldecode), serve it over local HTTP (harness background), and drive it
+  with Claude-in-Chrome. The Save button navigates to a literal
+  `$$RETURN_TO$$` placeholder when served this way (the phone app/S3 host
+  substitutes it) — grab the payload from the resulting 404 URL and curl it
+  to a fresh emu-app-config /close to complete the loop. Chrome screenshot
+  coords are scaled vs CSS px (screenshot_width / window.innerWidth); the
+  screenshot tool intermittently times out — read state via javascript_tool
+  instead.
 - `package.json` — Pebble manifest under the `"pebble"` key: UUID,
   `targetPlatforms`, `watchapp.watchface: true`, `resources.media`, plus
   `capabilities: ["configurable"]` and the Clay `messageKeys`. After

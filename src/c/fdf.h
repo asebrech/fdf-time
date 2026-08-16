@@ -19,6 +19,12 @@
 #define FDF_ROWS (25 + 2 * FDF_BLEED)
 #define FDF_Z_TOP 10  // altitude of extruded digit cells, as in 42.fdf
 
+// User-drawn splash canvas: exactly the inner region (border included), the
+// same dimensions on every platform so one drawing renders everywhere. The
+// phone-side editor (pixel-grid Clay component) hardcodes 22x25 to match.
+#define FDF_CUSTOM_COLS 22
+#define FDF_CUSTOM_ROWS 25
+
 typedef struct {
   uint8_t z_from[FDF_ROWS][FDF_COLS];  // altitudes before the current morph
   uint8_t z_to[FDF_ROWS][FDF_COLS];    // altitudes being morphed towards
@@ -56,6 +62,9 @@ void fdf_model_set_time(FdfModel *m, int hours, int minutes);
 // slashed-e (3 was Arch, removed; unknown values fall back to "42").
 // Values are persisted in settings — never renumber after a store release.
 void fdf_model_set_splash(FdfModel *m, int style);
+// User-drawn splash (style 5): rows use the same convention as the built-in
+// splashes — bit (1 << col) set = plateau cell, col 0 leftmost.
+void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]);
 // Seconds mode: one centered pair morphing every second.
 void fdf_model_set_seconds(FdfModel *m, int seconds);
 void fdf_model_set_mode(FdfModel *m, bool seconds_mode);

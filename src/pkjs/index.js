@@ -3,7 +3,8 @@ var clayConfig = require('./config');
 
 // The seconds peek/toggle gestures only exist in the classic display mode:
 // if the display is set to Seconds, such a shake choice snaps back to
-// Orbit, so the invalid combination can't be saved.
+// Orbit, so the invalid combination can't be saved. (The drawing editor is
+// always visible — its grid feeds both the splash and the shake gesture.)
 var customClay = function () {
   var clay = this;
   clay.on(clay.EVENTS.AFTER_BUILD, function () {
@@ -25,3 +26,4 @@ var customClay = function () {
 };
 
 var clay = new Clay(clayConfig, customClay);
+clay.registerComponent(require('./pixel-grid'));
