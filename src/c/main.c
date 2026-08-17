@@ -16,6 +16,10 @@
 // stamp any emoji/text the phone can render). Stored outside the settings
 // struct — it is 100 bytes and has its own lifecycle.
 #define CUSTOM_KEY 3
+// Lowest low-battery threshold already announced (0 = none pending). Persisted
+// so leaving and re-entering the watchface doesn't re-alert for the same step;
+// cleared when the charge recovers or the watch is plugged in.
+#define BATT_KEY 4
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift),
@@ -25,16 +29,17 @@ typedef struct {
   uint8_t splash_style; // launch splash: 0 off, 1 "42", 2 NixOS, 4 Pebble
                         // slashed-e, 5 user-drawn grid, 6 today's date,
                         // 7 orbit (the time rises during a full camera
-                        // turn). 3 was Arch, removed. Was a bool ("42"
-                        // on/off): 0/1 keep meaning when persisted.
+                        // turn), 8 battery gauge. 3 was Arch, removed.
+                        // Was a bool ("42" on/off): 0/1 keep meaning when
+                        // persisted.
   uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (reverts
                         // at the minute), 3 toggle seconds (sticky until
-                        // the next shake), 4-8 view peeks with 6 s
+                        // the next shake), 4-9 view peeks with 6 s
                         // auto-revert: 4 date, 5 the user's drawing (falls
                         // back to orbit if none saved), 6 "42", 7 NixOS,
-                        // 8 Pebble. 2/3 exist in classic mode only; values
-                        // match the pre-select boolean so persisted
-                        // settings keep meaning orbit.
+                        // 8 Pebble, 9 battery. 2/3 exist in classic mode
+                        // only; values match the pre-select boolean so
+                        // persisted settings keep meaning orbit.
   bool bt_vibe;         // double pulse when the phone connection drops
   uint8_t wave_rest;    // pause the swell while the backlight is off; only
                         // effective on hardware with the BacklightService
@@ -47,12 +52,14 @@ typedef struct {
   uint8_t wake_first;   // gestures only act on a lit screen (or shortly
                         // after a first, "waking" shake): a jolt on a
                         // sleeping watch wakes it instead of triggering
-                        // the action. Default OFF — the default action is
-                        // the orbit spin, harmless (and fun) to fire on the
-                        // waking shake itself.
+                        // the action. Default ON since 2026-08-17.
   uint8_t reserved1;    // was tilt_sway, feature removed 2026-08-15 (see
                         // the firmware-bug note near CAN_REST_WAVES);
                         // byte kept so persisted blobs keep their layout
+  uint8_t low_batt;     // show the battery scene by itself when the charge
+                        // first drops under 20% and again under 10%
+                        // (independent of shake_action 9). Appended: older
+                        // persisted blobs keep their meaning.
 } Settings;
 
 static Settings s_settings;
@@ -92,15 +99,26 @@ static uint64_t s_burst_ms;
 // touch for watchapps — every applib touch entry point silently no-ops
 // when sys_app_is_watchface() (see touch_service.c in the firmware).
 // Don't try again unless the firmware grows a watchface opt-in.
-// View peek (shake_action 4-8): one scene from the shared catalog — date,
-// the user's drawing, or a logo splash — rises from the ocean for a
-// moment, then reverts. Full-region scenes (drawing, NixOS, Pebble)
-// temporarily force the classic framing: the pair framing of the seconds
-// display mode would overflow the screen; the revert hands the mode its
-// own framing back.
+// View peek (shake_action 4-9): one scene from the shared catalog — date,
+// the user's drawing, a logo splash or the battery gauge — rises from the
+// ocean for a moment, then reverts. Full-region scenes (drawing, NixOS,
+// Pebble, battery) temporarily force the classic framing: the pair framing of
+// the seconds display mode would overflow the screen; the revert hands the
+// mode its own framing back.
 static bool s_view_peek;
 static AppTimer *s_view_timer;
 #define VIEW_PEEK_MS 6000
+// Low-battery alert: the same battery scene the shake can show, raised by
+// itself when the charge crosses a threshold. Only the CROSSING alerts, once
+// per step — s_batt_warned holds the lowest threshold already announced and is
+// persisted, so relaunching the watchface (every time the user leaves an app)
+// doesn't replay it. It rearms when the charge recovers or the watch is
+// plugged in. An alert fired at a dark screen would be wasted, so it waits in
+// s_batt_pending until the backlight comes on (or the splash finishes).
+static uint8_t s_batt_warned;
+static bool s_batt_pending;
+#define BATT_WARN_HIGH 20
+#define BATT_WARN_LOW 10
 // Date splash (splash_style 6): the weekday+month overlay must draw while
 // the splash holds, outside any peek state.
 static bool s_splash_overlay;
@@ -161,18 +179,20 @@ static void prv_update_proc(Layer *layer, GContext *ctx) {
   } else if (!prv_use_24h() && s_settings.show_ampm) {
     // Classic terrain in 12h: a discreet AM/PM tag — the digits alone are
     // ambiguous. Top-right on rect screens (the HH pair leans left, the
-    // ocean is free there); top-center on round, clear of the clipped rim.
+    // ocean is free there). On ROUND, top-center sat right on top of the HH
+    // pair (the round fit centers the model, so the digits reach the top of
+    // the disc); mid-right is the free spot — the trimetric lean puts HH's
+    // right end above it and MM's below, and the disc is at its widest there.
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
     GRect b = layer_get_bounds(layer);
     graphics_context_set_text_color(ctx, fdf_top_color());
     graphics_draw_text(ctx, t->tm_hour < 12 ? "AM" : "PM",
                        fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-                       PBL_IF_ROUND_ELSE(GRect(0, 6, b.size.w, 22),
+                       PBL_IF_ROUND_ELSE(GRect(0, b.size.h / 2 - 11,
+                                               b.size.w - 12, 22),
                                          GRect(0, 0, b.size.w - 4, 22)),
-                       GTextOverflowModeFill,
-                       PBL_IF_ROUND_ELSE(GTextAlignmentCenter,
-                                         GTextAlignmentRight), NULL);
+                       GTextOverflowModeFill, GTextAlignmentRight, NULL);
   }
 }
 
@@ -228,7 +248,7 @@ static const AnimationImplementation SPIN_IMPL = {
 static void prv_show_time(void);
 static void prv_show_seconds_now(void);
 static void prv_subscribe_ticks(void);
-static void prv_enter_view_peek(void);
+static void prv_enter_view_peek(int scene);
 static void prv_exit_view_peek(void);
 static void prv_start_spin(void);
 
@@ -319,13 +339,13 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
   // View peeks (date / drawing / logos) work in every display mode. With
   // no drawing saved yet, that choice falls back to the orbit so the
   // gesture is never dead.
-  if (s_settings.shake_action >= 4 && s_settings.shake_action <= 8) {
+  if (s_settings.shake_action >= 4 && s_settings.shake_action <= 9) {
     if (s_view_peek) {
       prv_exit_view_peek();
     } else if (s_settings.shake_action == 5 && !s_has_custom) {
       prv_start_spin();
     } else {
-      prv_enter_view_peek();
+      prv_enter_view_peek(s_settings.shake_action);
     }
     return;
   }
@@ -401,9 +421,10 @@ static void prv_show_time(void) {
 // --- view peek (shared scene catalog) ---
 
 // Stamp one scene onto the terrain: 4 date (day-number pair, weekday+month
-// overlay), 5 the user's drawing, 6/7/8 the "42"/NixOS/Pebble splashes.
-// Full-region scenes force the classic framing (see the s_view_peek note);
-// the "42" and the date are pairs and look right in either framing.
+// overlay), 5 the user's drawing, 6/7/8 the "42"/NixOS/Pebble splashes,
+// 9 the battery staircase. Full-region scenes force the classic framing (see
+// the s_view_peek note); the "42" and the date are pairs and look right in
+// either framing.
 static void prv_show_view_now(int action) {
   s_overlay[0] = '\0';
   switch (action) {
@@ -418,6 +439,13 @@ static void prv_show_view_now(int action) {
       fdf_model_set_mode(&s_model, false);
       fdf_model_set_custom(&s_model, s_custom);
       break;
+    case 9: {
+      // No overlay text: the percentage is terrain here, like the time.
+      BatteryChargeState st = battery_state_service_peek();
+      fdf_model_set_mode(&s_model, false);
+      fdf_model_set_battery(&s_model, st.charge_percent, st.is_charging);
+      break;
+    }
     default:
       if (action != 6) {
         fdf_model_set_mode(&s_model, false);
@@ -437,12 +465,14 @@ static void prv_view_revert_cb(void *data) {
   }
 }
 
-static void prv_enter_view_peek(void) {
+// The scene is a parameter, not s_settings.shake_action: the low-battery
+// alert raises scene 9 whatever the shake is set to.
+static void prv_enter_view_peek(int scene) {
   if (s_view_timer) {
     app_timer_cancel(s_view_timer);
   }
   s_view_peek = true;
-  prv_show_view_now(s_settings.shake_action);
+  prv_show_view_now(scene);
   s_view_timer = app_timer_register(VIEW_PEEK_MS, prv_view_revert_cb, NULL);
 }
 
@@ -454,6 +484,65 @@ static void prv_exit_view_peek(void) {
   s_view_peek = false;
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
   prv_show_time();
+}
+
+// --- low-battery alert ---
+
+// Raise the battery scene by itself, whatever the shake gesture is set to.
+// Firing at a dark screen would waste the alert, so it waits for the backlight
+// (or for a running splash to hand the stage back).
+static void prv_batt_alert(void) {
+  if (s_splash_timer) {
+    s_batt_pending = true;
+    return;
+  }
+#if defined(CAN_REST_WAVES)
+  if (!s_lit) {
+    s_batt_pending = true;
+    return;
+  }
+#endif
+  s_batt_pending = false;
+  prv_enter_view_peek(9);
+}
+
+// Claim the threshold the current charge falls under, if it hasn't been
+// announced yet — returns true (and marks it announced, persistently) exactly
+// once per step down. Plugging in or recovering above 20% rearms the ladder.
+static bool prv_batt_claim_alert(void) {
+  if (!s_settings.low_batt) {
+    return false;
+  }
+  BatteryChargeState st = battery_state_service_peek();
+  uint8_t t = 0;
+  if (!st.is_charging && !st.is_plugged) {
+    if (st.charge_percent <= BATT_WARN_LOW) {
+      t = BATT_WARN_LOW;
+    } else if (st.charge_percent <= BATT_WARN_HIGH) {
+      t = BATT_WARN_HIGH;
+    }
+  }
+  if (t == 0) {
+    s_batt_pending = false;
+    if (s_batt_warned) {
+      s_batt_warned = 0;
+      persist_write_int(BATT_KEY, 0);
+    }
+    return false;
+  }
+  if (s_batt_warned && t >= s_batt_warned) {
+    return false;  // this step (or a lower one) already had its alert
+  }
+  s_batt_warned = t;
+  persist_write_int(BATT_KEY, t);
+  return true;
+}
+
+static void prv_battery_handler(BatteryChargeState st) {
+  (void)st;  // prv_batt_claim_alert peeks the authoritative state itself
+  if (prv_batt_claim_alert()) {
+    prv_batt_alert();
+  }
 }
 
 static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
@@ -527,6 +616,9 @@ static void prv_backlight_handler(bool on) {
   }
   prv_apply_wave_engine();
   prv_subscribe_ticks();  // fluid drops to minute ticks while resting
+  if (on && s_batt_pending) {
+    prv_batt_alert();  // the alert that crossed while the screen was dark
+  }
 }
 #endif
 
@@ -537,6 +629,9 @@ static void prv_splash_done(void *data) {
   // framing back before the time morph.
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
   prv_show_time();
+  if (s_batt_pending) {
+    prv_batt_alert();  // held back while the splash owned the stage
+  }
 }
 
 // --- settings ---
@@ -602,6 +697,14 @@ static void prv_apply_settings(void) {
     accel_tap_service_subscribe(prv_tap_handler);
   } else {
     accel_tap_service_unsubscribe();
+  }
+
+  // Only the automatic alert needs the service; the shake scene peeks.
+  if (s_settings.low_batt) {
+    battery_state_service_subscribe(prv_battery_handler);
+  } else {
+    battery_state_service_unsubscribe();
+    s_batt_pending = false;
   }
 
   s_bt_connected = connection_service_peek_pebble_app_connection();
@@ -696,6 +799,9 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_WakeFirst))) {
     s_settings.wake_first = prv_tuple_int(t) != 0;
   }
+  if ((t = dict_find(iter, MESSAGE_KEY_LowBatt))) {
+    s_settings.low_batt = prv_tuple_int(t) != 0;
+  }
   if (s_settings.display_mode == 1 &&
       (s_settings.shake_action == 2 || s_settings.shake_action == 3)) {
     s_settings.shake_action = 1;  // peek/toggle don't exist in seconds mode
@@ -716,22 +822,31 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
   } else if (!s_splash_timer) {
     prv_show_time();  // re-render immediately in the (possibly new) mode
+    if (prv_batt_claim_alert()) {
+      // Turning the alert on while already low shows it right away instead of
+      // waiting for the next crossing.
+      prv_batt_alert();
+    }
   }
 }
 
 static void prv_load_settings(void) {
   s_settings = (Settings) {
-    .theme = 0,  // Tokyo Night — closest heir to the original FdF look
-    .wave_mode = 0,
+    // Defaults revised 2026-08-17 (user's call). They only apply to a FRESH
+    // install: any watch with a persisted blob keeps what it had.
+    .theme = 1,         // Catppuccin
+    .wave_mode = 3,     // silk
     .gradient = 1,
-    .display_mode = 0,
-    .splash_style = 1,  // the "42" homage
-    .shake_action = 1,
+    .display_mode = 0,  // classic HH/MM terrain
+    .splash_style = 6,  // today's date
+    .shake_action = 9,  // the battery scene
     .bt_vibe = false,
     .wave_rest = 1,
-    .time_format = 0,  // follow the watch's 12/24h setting
+    .time_format = 0,   // follow the watch's 12/24h setting
     .show_ampm = 1,
-    .wake_first = 0,  // orbit-by-default makes the waking shake harmless
+    .wake_first = 1,    // a jolt on a sleeping watch wakes it, it does not
+                        // fire the gesture
+    .low_batt = 1,      // announce 20% and 10% by itself
   };
   if (persist_exists(SETTINGS_KEY)) {
     persist_read_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));
@@ -739,6 +854,9 @@ static void prv_load_settings(void) {
   if (persist_exists(CUSTOM_KEY)) {
     s_has_custom = persist_read_data(CUSTOM_KEY, s_custom, sizeof(s_custom)) ==
                    (int)sizeof(s_custom);
+  }
+  if (persist_exists(BATT_KEY)) {
+    s_batt_warned = persist_read_int(BATT_KEY);
   }
   // Resume a persisted sticky toggle (the splash then morphs into the
   // seconds view instead of the time).
@@ -768,7 +886,17 @@ static void prv_window_load(Window *window) {
   // are live during the splash so the swell rolls; the tick handler holds
   // back the time morph until the splash is done.
   prv_apply_settings();
-  if (s_settings.splash_style == 5 && s_has_custom) {
+  // Battery staircase at launch: either because the user picked it as their
+  // splash, or because the charge is already under an unannounced threshold —
+  // the alert takes the splash slot rather than interrupting a moment later.
+  // (Short-circuit order matters: with the battery splash selected the
+  // threshold stays unclaimed, so a later crossing still alerts.)
+  bool batt_splash = s_settings.splash_style == 8 || prv_batt_claim_alert();
+  if (batt_splash) {
+    prv_show_view_now(9);  // starts its own morph — a second start here would
+                           // unschedule it mid-flight
+    s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  } else if (s_settings.splash_style == 5 && s_has_custom) {
     fdf_model_set_mode(&s_model, false);  // full-region: classic framing
     fdf_model_set_custom(&s_model, s_custom);
     prv_start_morph_ms(MORPH_DURATION_MS);
@@ -828,6 +956,7 @@ static void prv_window_unload(Window *window) {
 #endif
   tick_timer_service_unsubscribe();
   accel_tap_service_unsubscribe();
+  battery_state_service_unsubscribe();
   connection_service_unsubscribe();
   layer_destroy(s_layer);
 }

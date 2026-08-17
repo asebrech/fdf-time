@@ -115,11 +115,13 @@ Run with the pebble-tool venv python inside the FHS env
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
   different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, six
   user-selectable 11-step altitude palettes — hand-quantized ports of
-  Tokyo Night (default — closest heir to the original FdF blues, listed
-  first) then alphabetically Catppuccin Mocha / Dracula / Gruvbox /
-  Kanagawa / Nord, each with a themed foreground color for the plateau
-  tops. Theme indices are PERSISTED on watches — never reorder after a
-  store release.
+  Tokyo Night (index 0, the original default), Catppuccin Mocha (index 1,
+  the default since 2026-08-17), Dracula, Gruvbox, Kanagawa, Nord, each with
+  a themed foreground color for the plateau tops. Theme indices are
+  PERSISTED on watches — the C array can never be reordered after a store
+  release. The Clay select lists them ALPHABETICALLY (Catppuccin, Dracula,
+  Gruvbox, Kanagawa, Nord, Tokyo Night) with those same frozen values:
+  display order and storage order are deliberately different.
   Pebble is 4-levels-per-channel; ports pick the nearest VIVID hue, never
   naive rounding (pastels round to washed-out gray), with each theme's
   signature accent on the wall tips (index 4). Placement rules: theme
@@ -138,8 +140,42 @@ Run with the pebble-tool venv python inside the FHS env
   swell in the bleed ring,
   recomputed each frame from `wave_phase` (fractional heights, capped at
   z=6 so digits stay the foreground).
+  Battery scene (`fdf_model_set_battery`, 2026-08-17), all terrain, NO
+  system-font overlay — the number is FdF like the time. Inner-coord layout
+  (user's order, 2026-08-17): rows 3-10 a drawn battery at inner col 0 (case
+  15x8, 2-cell frame, a 2-cell terminal nub on the middle rows, and 11 charge
+  cells filling the case's WHOLE inner height — a thin bar floating inside
+  with gaps reads as a lonely stroke in an empty box), rows 14-23 the two
+  percentage digits under it, in the MM slot. That is the longest case that
+  fits at that height: the band leans, so the higher the case the sooner it is
+  cut on the right, and its top-right corner already lands 10 px from the edge
+  on basalt (verified by replaying the projection, not by eye — the lean makes
+  everything look clipped in a screenshot). One more column puts it at 4 px.
+  The 1-cell nub was widened to 2 because at 100% the case is entirely solid
+  and the nub is the only thing left saying "battery".
+  EVERYTHING STANDS AT ONE ALTITUDE, the level's palette index: the digits,
+  the case, the nub and the charge. Giving the charge its own (lower) colour
+  was tried and turns the pictogram to mush — it puts a wall around the bar
+  INSIDE the case, and at ~6 px per cell that doubles the line count in a
+  small area. One altitude = one outline against the floor, as clean as the
+  digits. `prv_place_glyph` / `prv_place_pair` take a `top` parameter for
+  exactly this. Level → index runs 6 (full) to 9 (nearly empty), staying in
+  the ramp's vivid half (the low indices are recessive darks by design — an
+  early "track" drawn there was invisible), which reads green → yellow →
+  orange → hot on most themes. At 100% there is no number (three digits never
+  fit a pair box, and "10"/"00" would misread as 10%/0%): the full battery
+  stands centred, alone. While charging, the 10% currently filling lights in
+  the theme's foreground. THE USER REJECTED, IN ORDER, do not retry: a
+  rising-step staircase; a bare 10-cell block under the number ("un chiffre
+  et un carré"); a long thin 20-cell bar with a track; that bar plus a 3x5
+  "%" glyph. What passed is the number plus a drawn battery — the pictogram
+  is what makes the scene self-explanatory.
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
-  strokes are 2-cell plateaus like the original 42.fdf map.
+  strokes are 2-cell plateaus like the original 42.fdf map. Plus a `%` glyph
+  (battery scene). Glyph rule: strokes move between columns ORTHOGONALLY,
+  never diagonally — corner-touching cells share no edge in the plateau
+  wireframe and render as floating blocks (hence the straight-legged 7, and
+  the percent sign's slash drawn as a staircase).
 - User drawing (2026-08-15, from a store user's request): a 22×25 1-bit
   grid (`FDF_CUSTOM_COLS/ROWS` — exactly the inner region, same on all
   platforms) drawn in a custom Clay component (`src/pkjs/pixel-grid.js`,
@@ -202,7 +238,7 @@ Run with the pebble-tool venv python inside the FHS env
   date (day terrain + weekday-month overlay via `s_splash_overlay`),
   7 orbit (no scene: the time rises during one full camera turn —
   verified by log; QEMU screenshots are too slow to sample a 1.4 s
-  animation). Value
+  animation), 8 battery gauge. Value
   3 was Arch Linux — shipped briefly, user rejected it (a filled A is a
   dense mesh blob, and the crossbar that makes it read "A" is sub-cell);
   the number stays reserved, unknown values fall back to "42".
@@ -221,16 +257,17 @@ Run with the pebble-tool venv python inside the FHS env
   single centered SS pair at a 1.5x-fitted "pair" framing, morphing
   every second, HH:MM as small text over the ocean; briefly removed
   2026-08-14 then restored on user request, as was the sticky toggle —
-  don't remove them again). The shake gesture is a 9-way setting: orbit
+  don't remove them again). The shake gesture is a 10-way setting: orbit
   spin (1) / peek at seconds (2: SS terrain + HH:MM overlay in the
   CLASSIC framing so there is no camera jump, reverts where the minute
   morph begins or on a second shake) / sticky seconds toggle (3:
   persisted under PEEK_KEY, survives relaunches; 2 and 3 exist in
   classic display mode only, guarded on both Clay and watch sides) /
-  view peeks 4-8 (`s_view_peek` + `prv_show_view_now`, one generic
+  view peeks 4-9 (`s_view_peek` + `prv_show_view_now`, one generic
   machinery: 4 date — DD terrain + weekday-month overlay, 5 the user's
   drawing — falls back to orbit when none saved, 6 "42", 7 NixOS,
-  8 Pebble; 6 s auto-revert, allowed in every display mode; full-region
+  8 Pebble, 9 the battery scene (number + bar, no overlay text);
+  6 s auto-revert, allowed in every display mode; full-region
   scenes force classic framing, the revert restores the mode's own;
   overlays the underlying view — s_peeking stays untouched so the
   revert lands back on it) / off (0). The scene catalog is deliberately
@@ -245,8 +282,27 @@ Run with the pebble-tool venv python inside the FHS env
   seconds toggle (shake 3) was also dropped from the UI on 2026-08-16
   ("on simplifie" — this supersedes the earlier "don't remove" note,
   which was about removing the FEATURE; the watch code and persisted
-  value still work). Final shake list: Orbit / drawing / date / seconds
-  (2, label "Show the seconds", no parenthetical) / "42" / NixOS / Off. Buttons are as impossible as touch on watchfaces:
+  value still work). LABELS ARE SHARED BY BOTH SELECTS (2026-08-17 user
+  request, supersedes the earlier "Show the seconds" wording): the same
+  scene has the same name and the same position in the splash select and
+  the shake select — "42" / My drawing / Today's date / Battery / NixOS /
+  Orbit spin / Off, no "Show…" prefixes; the shake list is that list with
+  "Seconds" inserted after the date (it is the one scene the splash cannot
+  offer). Only the persisted VALUES differ between the two sides, and they
+  must never be renumbered.
+  Low-battery alert (2026-08-17, `low_batt` / Clay `LowBatt`, default on):
+  the SAME scene 9 raises itself when the charge first crosses under 20%,
+  then under 10% — whatever the shake is set to. Only the CROSSING alerts,
+  once per step: the lowest threshold announced is persisted under
+  `BATT_KEY 4` (a watchface relaunches every time the user leaves an app,
+  so an unpersisted latch would replay the alert constantly) and rearms
+  when the charge recovers or the watch is plugged in. An alert fired at a
+  dark screen would be wasted, so it waits in `s_batt_pending` for the
+  backlight (CAN_REST_WAVES boards) or for a running splash to end; when
+  the watch is already low at launch, the gauge takes the splash slot
+  instead of interrupting a moment later. Deliberately NO vibration: the
+  firmware pushes its own low-battery notification, a second buzz would
+  double up. Buttons are as impossible as touch on watchfaces:
   the kernel's shell/normal/watchface.c owns the ClickManager
   (launcher, timeline, quick-launch) — a watchface never sees clicks.
   Tap handling: events within 1.2 s are one physical shake (burst
@@ -339,6 +395,13 @@ Run with the pebble-tool venv python inside the FHS env
   ("Unexpected non-whitespace character after JSON at position N") — Clay
   then never answers showConfiguration and emu-app-config times out or
   500s. Fix: rm those files and restart the emulator.
+- `pebble emu-battery --emulator <plat> --percent N` needs the explicit
+  `--emulator` flag and lands ASYNCHRONOUSLY: the app often still peeks the
+  old charge on the very next `pebble install`, so a level test takes an
+  extra install cycle (verify with the value the scene itself prints). A
+  scene that only shows for 1.5 s cannot be screenshotted either — bump
+  SPLASH_MS to 90000 in a scratch build to inspect it, and remember to
+  revert.
 - `pebble emu-tap` stopped delivering tap events to the app in the
   2026-08-15 session (no accel_tap callback fires at all — verified with an
   APP_LOG first thing in the handler, on fresh emulators, with the orbit
@@ -398,6 +461,57 @@ Run with the pebble-tool venv python inside the FHS env
   reading baseline as steeply as the angle itself. The fix is trimetric:
   digit-row axis at a gentle 22°, stack axis steep and auto-picked, plus a
   bleed ring of terrain overflowing the screen edges.
+- ALTITUDE CANNOT ENCODE A VALUE. `Z_NUM/Z_DEN = 3/16` is sized so digit
+  plateaus just clear the ROW_GAP, which makes one altitude unit ≈ 1 px:
+  the full 0..10 range is ~11 px. Every "gauge by height" idea (staircase
+  of rising steps, ramp, sinking slab) renders as a tilted plate lost in
+  the swell — four geometries tried on 2026-08-17, all rejected. Only two
+  things read at this density: the FOOTPRINT of a full-height plateau, and
+  the palette color. Design new scenes as shapes, not as reliefs.
+- The flip side: ALTITUDE IS THE COLOUR CHANNEL, and it is nearly free.
+  Stamping a shape one or two steps below FDF_Z_TOP changes its colour to
+  that palette entry while moving it ~1 px — that is how the battery scene
+  tints its digits by charge level. Two rules: stay in the ramp's vivid
+  half (6-9; the low indices are recessive darks by design and vanish
+  against the mesh), and on 1-bit stamp FDF_Z_TOP instead — mid altitudes
+  draw NOTHING there (walls dropped, tops only above z=7).
+- LINE COUNT IS THE REAL BUDGET at ~6 px/cell. Every altitude CHANGE draws
+  a wall, so a shape with an inner element at a different altitude costs
+  twice the strokes of the same shape drawn flat — enough to turn a small
+  pictogram into mush. Stamp composite scenes at ONE altitude and let the
+  colour (that same altitude) carry the meaning; reserve a second altitude
+  for one small accent (the charging cell).
+- THERE ARE NO VERTICAL EDGES in this renderer: every line joins two
+  ADJACENT GRID VERTICES, so a "wall" is the diagonal between a high cell
+  and its lower neighbour — one grid step sideways (~6 px) plus the whole
+  height drop (~11 px at FDF_Z_TOP). That lands ~24° off vertical on the
+  digit-row axis and ~11° on the stack axis. It is the house style (the
+  digits' flanks do it too) but the eye rejects it on any edge where it
+  expects a clean vertical, e.g. a gauge's fill line (user report,
+  2026-08-17). It cannot be straightened, only SHORTENED, by raising the
+  surface the edge drops onto. That was tried on the battery (uncharged
+  cells 3 palette steps under the charge instead of at ocean level) and the
+  user chose to keep the deep version once the geometry was explained — the
+  short step weakens the case outline. Explain the lean before "fixing" it.
+- Inside an enclosing frame, an inner bar needs a 1-cell gap from the frame
+  above and below, or the two fuse into a single blob and the level
+  disappears. That is why the battery case is 8 rows for a 2-row bar.
+- NEW SCENES MUST FIT THE VISIBLE BAND, which is much smaller than the
+  inner region. The fitted zoom only guarantees the two DIGIT boxes on
+  screen (that is deliberate — the bleed ring is meant to clip), so the
+  inner region's own corners fall off the edges. Measured with a probe
+  grid and by replaying the projection offline: an inner cell (col, row)
+  is on screen iff `col - row` is within [-13, 10] — a diagonal band. It
+  is the same on every platform (the two aspect ratios differ by a few
+  percent, round chalk is the most generous, and the 1-bit boards'
+  narrower bleed ring cancels out, the fit being relative to the inner
+  region either way). Consequences: a shape spends that budget on its
+  width AND its height, so anything bigger than a digit-pair box (14×10,
+  span 22) gets clipped; the failure mode is silent and asymmetric — the
+  first battery staircase was 20 cols wide and simply vanished at 10%
+  charge, its short steps having fallen off the bottom-left corner.
+  Logos and drawings survive because they are centered and roughly
+  circular; a wide rectangle is not.
 
 ## Platform handling
 
@@ -422,7 +536,12 @@ hardcoded coordinates. Test at minimum on `basalt` (color rect), `chalk`
   `TimeFormat` select (0 auto/1 12h/2 24h, `prv_use_24h`) can override it;
   in 12h the seconds/date overlay text carries AM/PM and the classic
   terrain draws a small AM/PM tag (top-right on rect — the HH pair leans
-  left so the ocean is free there; top-center on round). 24h shows no
+  left so the ocean is free there; MID-RIGHT on round, moved there
+  2026-08-17 on user report: top-center sat right on the HH pair, since the
+  round fit centers the model and the digits reach the top of the disc.
+  Mid-right is the free pocket the trimetric lean leaves between HH's
+  bottom-right and MM's top-right — checked against the maximal footprint
+  by stamping 88:88, not just the current time). 24h shows no
   tag, and the Clay `ShowAmPm` toggle (default on) can hide it in 12h.
 
 ## Claude Code skill

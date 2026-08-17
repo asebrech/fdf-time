@@ -22,3 +22,9 @@ static const uint8_t DIGIT_FONT[10][DIGIT_FONT_ROWS] = {
   {0b111, 0b101, 0b111, 0b101, 0b111},  // 8
   {0b111, 0b101, 0b111, 0b001, 0b111},  // 9
 };
+
+// A 3x5 percent sign was tried for the battery scene (2026-08-17) and
+// rejected on sight: at this cell size its slash can only be a chunky
+// orthogonal staircase — a true diagonal leaves corner-touching cells, which
+// the plateau wireframe renders as floating blocks. Don't reintroduce it; a
+// drawn battery says "percent of battery" better than the glyph ever did.

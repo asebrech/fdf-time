@@ -1,7 +1,7 @@
 {
   "name": "fdf-time",
   "author": "asebrech",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "keywords": [
     "pebble-app"
   ],
@@ -39,7 +39,8 @@
       "TimeFormat",
       "ShowAmPm",
       "WakeFirst",
-      "CustomMap"
+      "CustomMap",
+      "LowBatt"
     ],
     "resources": {
       "media": []

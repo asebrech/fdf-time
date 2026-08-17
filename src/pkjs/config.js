@@ -14,15 +14,15 @@ module.exports = [
       {
         "type": "select",
         "messageKey": "Theme",
-        "defaultValue": "0",
+        "defaultValue": "1",
         "label": "Color theme",
         "options": [
-          { "label": "Tokyo Night", "value": "0" },
           { "label": "Catppuccin", "value": "1" },
           { "label": "Dracula", "value": "2" },
           { "label": "Gruvbox", "value": "3" },
           { "label": "Kanagawa", "value": "4" },
-          { "label": "Nord", "value": "5" }
+          { "label": "Nord", "value": "5" },
+          { "label": "Tokyo Night", "value": "0" }
         ]
       },
       {
@@ -61,7 +61,7 @@ module.exports = [
       {
         "type": "select",
         "messageKey": "WaveMode",
-        "defaultValue": "0",
+        "defaultValue": "3",
         "label": "Ocean animation",
         "options": [
           { "label": "Silk (ultra-fluid)", "value": "3" },
@@ -91,37 +91,45 @@ module.exports = [
       {
         "type": "select",
         "messageKey": "Splash42",
-        "defaultValue": "1",
+        "defaultValue": "6",
         "label": "Splash on launch",
         "options": [
           { "label": "\"42\"", "value": "1" },
           { "label": "My drawing", "value": "5" },
           { "label": "Today's date", "value": "6" },
+          { "label": "Battery", "value": "8" },
           { "label": "NixOS", "value": "2" },
-          { "label": "Orbit", "value": "7" },
+          { "label": "Orbit spin", "value": "7" },
           { "label": "Off", "value": "0" }
         ]
       },
       {
         "type": "select",
         "messageKey": "ShakeOrbit",
-        "defaultValue": "1",
+        "defaultValue": "9",
         "label": "Shake gesture",
         "options": [
+          { "label": "\"42\"", "value": "6" },
+          { "label": "My drawing", "value": "5" },
+          { "label": "Today's date", "value": "4" },
+          { "label": "Seconds", "value": "2" },
+          { "label": "Battery", "value": "9" },
+          { "label": "NixOS", "value": "7" },
           { "label": "Orbit spin", "value": "1" },
-          { "label": "Show my drawing", "value": "5" },
-          { "label": "Show the date", "value": "4" },
-          { "label": "Show the seconds", "value": "2" },
-          { "label": "Show \"42\"", "value": "6" },
-          { "label": "Show NixOS", "value": "7" },
           { "label": "Off", "value": "0" }
         ]
       },
       {
         "type": "toggle",
+        "messageKey": "LowBatt",
+        "label": "Battery alert under 20%",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
         "messageKey": "WakeFirst",
         "label": "First shake only wakes the screen",
-        "defaultValue": false
+        "defaultValue": true
       },
       {
         "type": "toggle",

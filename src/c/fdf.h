@@ -67,6 +67,13 @@ void fdf_model_set_splash(FdfModel *m, int style);
 void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]);
 // Seconds mode: one centered pair morphing every second.
 void fdf_model_set_seconds(FdfModel *m, int seconds);
+// Battery scene: the percentage as terrain digits in the HH slot plus a
+// 10-cell charge bar in the MM slot (one cell per 10%, the resolution the
+// battery service reports), both tinted by the level through the theme's
+// altitude palette. At 100% the bar stands alone, centred — three digits do
+// not fit a pair box. Uses both digit slots, so it needs the classic framing
+// like the other full-region scenes.
+void fdf_model_set_battery(FdfModel *m, int percent, bool charging);
 void fdf_model_set_mode(FdfModel *m, bool seconds_mode);
 // The active theme's plateau-top ("text") color; White on 1-bit.
 GColor fdf_top_color(void);

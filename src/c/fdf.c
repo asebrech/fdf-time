@@ -41,7 +41,10 @@ static uint16_t s_ck8[FDF_ROWS][FDF_COLS];
 // "visible dark" (55-level channels; near-black floors made every theme
 // look alike: white digits over an invisible mesh). Indices 7-9 are the
 // morph sweep — each theme's most vivid accents, brightest last.
-// Order: the default first, then alphabetical.
+// ARRAY ORDER IS FROZEN — the index is what watches persist, so it can never
+// be reordered after a store release. It is historical (Tokyo Night shipped
+// as index 0, the original default); the Clay select lists the themes
+// alphabetically with these same values, and the default is now Catppuccin.
 static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
   { // 0: Tokyo Night (default) — blue on blue: night-blue floor, cobalt
     // body, neon tips, teal crests, city-light sweep ending hot pink
@@ -159,14 +162,20 @@ GColor fdf_top_color(void) {
 #endif
 }
 
-static void prv_place_digit(uint8_t z[FDF_ROWS][FDF_COLS], int digit,
-                            int col0, int row0) {
+// `top` is the altitude the strokes stand at — FDF_Z_TOP for the time and
+// every scene that wants the theme's foreground, or a lower step when the
+// digits should carry a palette COLOR instead (the battery level). Altitude
+// is the only colour channel this renderer has, and one step is ~1 px, so
+// tinting a number costs nothing in shape.
+static void prv_place_glyph(uint8_t z[FDF_ROWS][FDF_COLS],
+                            const uint8_t *glyph, int col0, int row0,
+                            uint8_t top) {
   for (int fr = 0; fr < DIGIT_FONT_ROWS; fr++) {
     for (int fc = 0; fc < DIGIT_FONT_COLS; fc++) {
-      if (DIGIT_FONT[digit][fr] & (1 << (DIGIT_FONT_COLS - 1 - fc))) {
+      if (glyph[fr] & (1 << (DIGIT_FONT_COLS - 1 - fc))) {
         for (int dy = 0; dy < 2; dy++) {
           for (int dx = 0; dx < 2; dx++) {
-            z[row0 + fr * 2 + dy][col0 + fc * 2 + dx] = FDF_Z_TOP;
+            z[row0 + fr * 2 + dy][col0 + fc * 2 + dx] = top;
           }
         }
       }
@@ -175,10 +184,11 @@ static void prv_place_digit(uint8_t z[FDF_ROWS][FDF_COLS], int digit,
 }
 
 static void prv_place_pair(uint8_t z[FDF_ROWS][FDF_COLS], int value, int col0,
-                           int row0) {
+                           int row0, uint8_t top) {
   col0 += FDF_BLEED + BORDER;
-  prv_place_digit(z, value / 10, col0, FDF_BLEED + row0);
-  prv_place_digit(z, value % 10, col0 + DIGIT_W + DIGIT_GAP, FDF_BLEED + row0);
+  prv_place_glyph(z, DIGIT_FONT[value / 10], col0, FDF_BLEED + row0, top);
+  prv_place_glyph(z, DIGIT_FONT[value % 10], col0 + DIGIT_W + DIGIT_GAP,
+                  FDF_BLEED + row0, top);
 }
 
 static uint16_t prv_z8_at(const FdfModel *m, int y, int x) {
@@ -300,8 +310,9 @@ void fdf_model_set_mode(FdfModel *m, bool seconds_mode) {
 
 void fdf_model_set_time(FdfModel *m, int hours, int minutes) {
   prv_snapshot_current(m);
-  prv_place_pair(m->z_to, hours, 0, BORDER);
-  prv_place_pair(m->z_to, minutes, FDF_STAGGER, BORDER + DIGIT_H + ROW_GAP);
+  prv_place_pair(m->z_to, hours, 0, BORDER, FDF_Z_TOP);
+  prv_place_pair(m->z_to, minutes, FDF_STAGGER, BORDER + DIGIT_H + ROW_GAP,
+                 FDF_Z_TOP);
 }
 
 // --- launch splashes ---
@@ -362,7 +373,7 @@ void fdf_model_set_splash(FdfModel *m, int style) {
       break;
     default:  // 1 (and anything unknown): the "42" homage
       prv_place_pair(m->z_to, 42, FDF_STAGGER / 2,
-                     (INNER_ROWS - DIGIT_H) / 2);
+                     (INNER_ROWS - DIGIT_H) / 2, FDF_Z_TOP);
       break;
   }
 }
@@ -377,9 +388,143 @@ void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]) {
   prv_stamp(m->z_to, rows, FDF_CUSTOM_COLS, FDF_CUSTOM_ROWS);
 }
 
+// Battery scene, all terrain, no system-font text:
+//
+//   rows  4-11  a drawn battery: case, terminal nub, and a bar of 10 charge
+//               cells floating inside
+//   rows 14-23  the percentage under it, two digits, in the MM slot   "85"
+//
+// The pictogram is what says BATTERY. Three lighter variants were tried and
+// rejected on sight by the user: a bare 10-cell block ("un chiffre et un
+// carré"), a long thin 20-cell gauge bar with a track, and that bar plus a
+// 3x5 "%" glyph. A number with a unit that has to be inferred is not worth
+// the pixels; a number with a battery drawn under it explains itself.
+//
+// NO RELIEF GAUGE, EVER: the extrusion is ~1 px per altitude unit
+// (Z_NUM/Z_DEN, sized so digit plateaus clear the ROW_GAP), so a level encoded
+// as a HEIGHT reads as a tilted plate lost in the swell — four geometries
+// tried, all mushy.
+//
+// SIZE AND PLACEMENT ARE CONSTRAINED, don't move this by eye: the fitted zoom
+// only guarantees the two DIGIT boxes on screen, so the inner region's own
+// corners are clipped. Measuring what survives (a probe grid, then the
+// projection replayed offline) gives a diagonal band — an inner cell
+// (col, row) is on screen iff col - row lies within [-13, 10], on every
+// platform (the two aspect ratios differ by a few percent, round chalk is the
+// most generous, and the 1-bit boards' narrower bleed ring cancels out: the
+// fit is relative to the inner region either way). The pictogram is sized to
+// a digit pair box and placed on the MM diagonal, which is why it cannot slide
+// further down: the band moves right as rows increase and it would run out of
+// inner columns.
+//
+// COLOUR IS ALTITUDE here, and one step is ~1 px, so tinting costs no shape.
+// The case and nub keep the theme's foreground; the digits and the charge
+// cells take the palette index the level maps to, from 6 (full) to 9 (nearly
+// empty). That range stays in the ramp's VIVID half deliberately: every
+// theme's low indices are recessive darks — an earlier version drew the
+// unfilled cells there as a "track" and it was invisible against the mesh.
+// 6->9 reads green -> yellow -> orange -> hot on most themes, so the number
+// and the charge heat up together as the battery drains. Swap the two
+// constants to reverse that. 1-bit keeps everything at FDF_Z_TOP: mid
+// altitudes draw nothing there.
+// Placement: the case's diagonal (col - row over its corners and nub) has to
+// stay inside the band, which leaves col0 - row0 in [-6, -3] for this shape.
+#define BATT_COL0 0     // inner col of the case's left edge
+#define BATT_ROW0 3     // inner row of its top edge, above the digits
+#define BATT_W 15       // 2 frame + 11 charge cells + 2 frame
+#define BATT_H 8        // 2 frame + 4 interior + 2 frame
+#define BATT_FRAME 2    // stroke thickness: 1-cell strokes are not legible
+// 12 cells, not 10: the case is as long as the band allows at this height,
+// and the digits give the exact figure anyway. Widening further means moving
+// the whole case DOWN — the band shifts right as rows increase, so at row 3
+// the last on-screen column is 15 and the case already ends there.
+#define BATT_CELLS 11
+#define BATT_FULL_COL0 3  // centred placement for the number-less 100% scene
+#define BATT_FULL_ROW0 8
+#define BATT_LEVEL_Z_FULL 6
+#define BATT_LEVEL_Z_EMPTY 9
+// The uncharged cells stay at ocean level — the charge line is therefore a
+// full-height wall, and like every wall here it leans (~24 deg off vertical:
+// nothing is drawn vertically, a wall is the edge between a high cell and its
+// lower neighbour). Raising that floor 3 steps to shorten the wall was tried
+// on 2026-08-17 and the user preferred the deep version once the lean was
+// explained: it keeps the case reading as a case.
+
+static void prv_stamp_battery(uint8_t z[FDF_ROWS][FDF_COLS], int col0,
+                              int row0, int filled, bool charging,
+                              uint8_t lvl) {
+  const int c0 = FDF_BLEED + col0;
+  const int r0 = FDF_BLEED + row0;
+  // Case, nub and charge all stand at the SAME altitude — the level's colour.
+  // Standing the charge lower (tried, to give it its own colour) puts a wall
+  // around it INSIDE the case: at ~6 px per cell that doubles the line count
+  // in a small area and the whole pictogram turns to mush. One altitude means
+  // one outline against the floor, as clean as the digits themselves; the
+  // colour still carries the level because the digits share it.
+  for (int r = 0; r < BATT_H; r++) {
+    for (int c = 0; c < BATT_W; c++) {
+      if (c < BATT_FRAME || c >= BATT_W - BATT_FRAME ||
+          r < BATT_FRAME || r >= BATT_H - BATT_FRAME) {
+        z[r0 + r][c0 + c] = lvl;
+      }
+    }
+  }
+  // The charge fills the case's whole inner height, so the charged part is a
+  // solid slab welded to the case and the level is read where that slab ends.
+  // A thin bar floating inside with a gap above and below was tried and reads
+  // as a lonely stroke in an empty box.
+  for (int r = BATT_FRAME; r < BATT_H - BATT_FRAME; r++) {
+    for (int c = 0; c < filled; c++) {
+      z[r0 + r][c0 + BATT_FRAME + c] = lvl;
+    }
+    if (charging && filled < BATT_CELLS) {
+      // The 10% currently filling up, in the theme's foreground.
+      z[r0 + r][c0 + BATT_FRAME + filled] = FDF_Z_TOP;
+    }
+  }
+  // The nub spans the middle rows only, so it reads as a terminal and not as
+  // a widening of the case — and it is 2 cells long: at one cell it vanishes
+  // at this scale, which matters most at 100%, where the case is entirely
+  // solid and the nub is the only thing still saying "battery".
+  for (int r = BATT_FRAME + 1; r < BATT_H - BATT_FRAME - 1; r++) {
+    z[r0 + r][c0 + BATT_W] = lvl;
+    z[r0 + r][c0 + BATT_W + 1] = lvl;
+  }
+}
+
+void fdf_model_set_battery(FdfModel *m, int percent, bool charging) {
+  prv_snapshot_current(m);
+  if (percent < 0) {
+    percent = 0;
+  }
+  if (percent > 100) {
+    percent = 100;
+  }
+  int filled = (percent * BATT_CELLS + 50) / 100;
+  uint8_t lvl = PBL_IF_COLOR_ELSE(
+      BATT_LEVEL_Z_EMPTY -
+          ((BATT_LEVEL_Z_EMPTY - BATT_LEVEL_Z_FULL) * percent) / 100,
+      FDF_Z_TOP);
+
+  // 100% would need three digits and a pair slot holds two — "10" or "00"
+  // there would read as 10% or 0%, worse than no number at all. The full
+  // battery says it on its own, centred where the pair would have been.
+  if (percent >= 100) {
+    prv_stamp_battery(m->z_to, BATT_FULL_COL0, BATT_FULL_ROW0, filled,
+                      charging, lvl);
+    return;
+  }
+  prv_stamp_battery(m->z_to, BATT_COL0, BATT_ROW0, filled, charging, lvl);
+  // The number goes in the MM slot — guaranteed on screen by the fit, like
+  // the minutes it replaces.
+  prv_place_pair(m->z_to, percent, FDF_STAGGER, BORDER + DIGIT_H + ROW_GAP,
+                 lvl);
+}
+
 void fdf_model_set_seconds(FdfModel *m, int seconds) {
   prv_snapshot_current(m);
-  prv_place_pair(m->z_to, seconds, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2);
+  prv_place_pair(m->z_to, seconds, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2,
+                 FDF_Z_TOP);
 }
 
 // Edge classes drive the visual hierarchy. Plateau-top edges (both ends
