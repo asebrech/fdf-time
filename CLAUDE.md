@@ -481,6 +481,15 @@ Run with the pebble-tool venv python inside the FHS env
   pictogram into mush. Stamp composite scenes at ONE altitude and let the
   colour (that same altitude) carry the meaning; reserve a second altitude
   for one small accent (the charging cell).
+- KEEP SCENES INSIDE THE BORDER: never stamp on inner col 0 / col 21 /
+  row 0 / row 24. Those cells are adjacent to the bleed ring, and since the
+  wireframe draws an edge to every neighbour, the edge on that side has one
+  endpoint IN THE SWELL and wobbles with the waves at 15 fps. That is what
+  BORDER=1 buys the digits. Shipped broken in v1.4.0 (the battery case
+  started at col 0 and its back edge rippled — "l'arrière de la batterie
+  bouge comme l'océan"), fixed in v1.4.1. Note the user-drawn grid spans
+  the whole inner region by design and does touch the ring on all four
+  sides — that is a known, accepted exception.
 - THERE ARE NO VERTICAL EDGES in this renderer: every line joins two
   ADJACENT GRID VERTICES, so a "wall" is the diagonal between a high cell
   and its lower neighbour — one grid step sideways (~6 px) plus the whole

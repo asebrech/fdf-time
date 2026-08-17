@@ -429,16 +429,23 @@ void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]) {
 // altitudes draw nothing there.
 // Placement: the case's diagonal (col - row over its corners and nub) has to
 // stay inside the band, which leaves col0 - row0 in [-6, -3] for this shape.
-#define BATT_COL0 0     // inner col of the case's left edge
+// STAY INSIDE THE BORDER: a scene must never occupy inner col 0 / col 21 /
+// row 0 / row 24. Those cells are adjacent to the bleed ring, and the
+// wireframe draws an edge to every neighbour — so the edge on that side has
+// one endpoint in the SWELL and wobbles with the waves at 15 fps. That is
+// what BORDER is for, and the battery ignored it at col 0 (user report,
+// 2026-08-17: "l'arrière de la batterie bouge comme l'océan"). Respecting it
+// costs the case one charge cell here, back to a clean 10 (one per 10%).
+#define BATT_COL0 1     // inner col of the case's left edge
 #define BATT_ROW0 3     // inner row of its top edge, above the digits
-#define BATT_W 15       // 2 frame + 11 charge cells + 2 frame
+#define BATT_W 14       // 2 frame + 10 charge cells + 2 frame
 #define BATT_H 8        // 2 frame + 4 interior + 2 frame
 #define BATT_FRAME 2    // stroke thickness: 1-cell strokes are not legible
 // 12 cells, not 10: the case is as long as the band allows at this height,
 // and the digits give the exact figure anyway. Widening further means moving
 // the whole case DOWN — the band shifts right as rows increase, so at row 3
 // the last on-screen column is 15 and the case already ends there.
-#define BATT_CELLS 11
+#define BATT_CELLS 10
 #define BATT_FULL_COL0 3  // centred placement for the number-less 100% scene
 #define BATT_FULL_ROW0 8
 #define BATT_LEVEL_Z_FULL 6
