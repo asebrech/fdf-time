@@ -142,14 +142,25 @@ Run with the pebble-tool venv python inside the FHS env
   bounding-box corners only — border and bleed ring intentionally clip past
   the screen edges); wireframe drawn right+bottom-neighbor with a visual
   hierarchy (plateau-top edges bright/bold, walls and base mesh recede —
-  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, six
+  different strategy per PBL_COLOR vs 1-bit, see `fdf_draw`). On color, seven
   user-selectable 11-step altitude palettes — hand-quantized ports of
   Tokyo Night (index 0, the original default), Catppuccin Mocha (index 1,
-  the default since 2026-08-17), Dracula, Gruvbox, Kanagawa, Nord, each with
-  a themed foreground color for the plateau tops. Theme indices are
+  the default since 2026-08-17), Dracula, Gruvbox, Kanagawa, Nord, plus
+  Matrix (index 6, added 2026-08-21 on user request), each with a themed
+  foreground color for the plateau tops. Matrix is the odd one out and
+  deliberately so: a SINGLE-HUE ramp where the identity is the climb, not a
+  hue contrast — DarkGreen #005500 floor (the darkest visible green Pebble
+  has, since the 2-bit channels give 0/85/170/255 and a black floor is
+  banned), IslamicGreen body, pure #00FF00 exactly at index 4 so GRAD_CAP
+  puts screen-green on the wall rims, and a pale sweep. Its tops are
+  MintGreen, NOT #00FF00: tops equal to GRAD_CAP would make every wall rim
+  read as a doubled stroke against the digit outline. Note the green floor
+  is perceptually brighter than the other themes' at the same channel level
+  (luma weights green 0.587 vs blue 0.114), so the ocean is more present
+  here — that is the digital rain, and it is intended. Theme indices are
   PERSISTED on watches — the C array can never be reordered after a store
   release. The Clay select lists them ALPHABETICALLY (Catppuccin, Dracula,
-  Gruvbox, Kanagawa, Nord, Tokyo Night) with those same frozen values:
+  Gruvbox, Kanagawa, Matrix, Nord, Tokyo Night) with those same frozen values:
   display order and storage order are deliberately different.
   Pebble is 4-levels-per-channel; ports pick the nearest VIVID hue, never
   naive rounding (pastels round to washed-out gray), with each theme's

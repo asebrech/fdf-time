@@ -21,6 +21,7 @@ module.exports = [
           { "label": "Dracula", "value": "2" },
           { "label": "Gruvbox", "value": "3" },
           { "label": "Kanagawa", "value": "4" },
+          { "label": "Matrix", "value": "6" },
           { "label": "Nord", "value": "5" },
           { "label": "Tokyo Night", "value": "0" }
         ]

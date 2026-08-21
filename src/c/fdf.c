@@ -99,6 +99,23 @@ static const GColor8 PALETTES[][FDF_Z_TOP + 1] = {
     {.argb = GColorPastelYellowARGB8},   {.argb = GColorMelonARGB8},
     {.argb = GColorSunsetOrangeARGB8},
   },
+  { // 6: Matrix — phosphor rain, the only single-hue ramp here: everything
+    // is green and the theme's identity is the CLIMB, not a colour
+    // contrast. Floor is DarkGreen #005500, a 55-level channel exactly as
+    // the "visible dark in the dominant hue" rule wants — pure black floors
+    // make every theme look alike and would make this one look like an
+    // empty screen. Body climbs through IslamicGreen #00AA00 to the
+    // signature pure #00FF00 at index 4, which is GRAD_CAP, so the wall
+    // rims carry the exact screen green. Crests cool towards cyan-green,
+    // and the morph sweep flares pale so a changing digit reads like the
+    // bright head of a rain column before it settles.
+    {.argb = GColorDarkGreenARGB8},      {.argb = GColorDarkGreenARGB8},
+    {.argb = GColorIslamicGreenARGB8},   {.argb = GColorIslamicGreenARGB8},
+    {.argb = GColorGreenARGB8},          {.argb = GColorMalachiteARGB8},
+    {.argb = GColorBrightGreenARGB8},    {.argb = GColorMediumSpringGreenARGB8},
+    {.argb = GColorScreaminGreenARGB8},  {.argb = GColorInchwormARGB8},
+    {.argb = GColorMintGreenARGB8},
+  },
 };
 #define PALETTE_COUNT (sizeof(PALETTES) / sizeof(PALETTES[0]))
 
@@ -111,6 +128,10 @@ static const GColor8 TOPS[PALETTE_COUNT] = {
   {.argb = GColorPastelYellowARGB8},  // Gruvbox fg #ebdbb2 (cream)
   {.argb = GColorPastelYellowARGB8},  // Kanagawa fujiWhite #dcd7ba
   {.argb = GColorWhiteARGB8},         // Nord snow storm #d8dee9
+  // Matrix: pale phosphor, NOT the pure #00FF00 of index 4 — the tops must
+  // stay clear of GRAD_CAP or the wall rims read as doubled strokes against
+  // the digit outline (the documented gradient-cap failure).
+  {.argb = GColorMintGreenARGB8},
 };
 
 static const GColor8 *s_palette = PALETTES[0];
