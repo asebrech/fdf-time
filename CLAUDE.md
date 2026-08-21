@@ -50,15 +50,42 @@ Run with the pebble-tool venv python inside the FHS env
   wall-clock minute boundary (SiFli boards ignore time injection) for
   `_rollover.gif`.
 - `upload_release.py <project> <version> <notes> <gifs_dir>` — posts a
-  release with `replaceScreenshots=true`; asset order per platform: boot,
-  rollover, orbit GIFs, then `_steady.png`.
+  release with `replaceScreenshots=true`. It now takes a PER-PLATFORM set
+  and skips whatever is missing rather than failing.
+- THE ASSET SET (decided 2026-08-21, replaces boot/rollover/orbit/seconds/
+  steady): five clips, ALL ANIMATED, in this order — the drawing rising into
+  the time, the minute rollover, the orbit, the heart strip, the theme
+  cycle. In a store list where everyone posts stills, every slot moving is
+  itself the pitch, so the seconds clip and the static shot were dropped.
+  1-bit boards get four (no themes); aplite swaps the heart for the battery
+  scene (no PBL_HEALTH). FIRST SLOT IS THE HERO: it must show the drawing
+  morphing INTO the time, which sells customisation, animation and "this is
+  a clock" in one loop.
+- `scene_capture.py <proj> <platform> <out> [secs]` / `scene_cut.py <frames>
+  <out> <suffix> [skip] [len]` — generic recorder for scenes the build
+  drives itself (heart, themes, battery). Two things it must do and does:
+  WIPE the emulator's persisted settings (a stale blob overrides the capture
+  build's defaults and you record the wrong scene), and install via the
+  CLI `pebble install --emulator` DURING the recording — installing through
+  libpebble2 alone can leave the emulator on "Install an app to continue",
+  which is how a whole heart capture came back as system UI.
+- `capture_patch.py heart|themes|battery|revert` — the temporary source
+  tweaks a capture needs (long splash, a pinned realistic BPM because QEMU
+  serves ~20, a palette that rotates every 1.6 s). It backs main.c up and
+  `revert` restores it. THESE MUST NEVER SHIP: rebuild from restored source
+  before uploading, and `grep -c SCRATCH src/c/*.c` before any release.
+- `emu-tap` WORKS again as of 2026-08-21 (the 2026-08-15 note said it was
+  dead); story_capture's orbit clip came out fine on all 7 platforms.
 - ALWAYS verify every GIF with a contact sheet before uploading
   (`ffmpeg -i x.gif -vf "select=not(mod(n\,5)),scale=60:-1,tile=13x1"`).
 - Store web UIs: PREFER the Claude-in-Chrome browser tools when available
   (the user's own Chrome, already logged in to both portals — used
   successfully 2026-08-15 for the Rebble release + both store descriptions;
   form_input + file_upload by element ref, no coordinate fragility). The
-  release-publish click still belongs to the user on Rebble; rePebble
+  release-publish click is supposed to belong to the user on Rebble, but on
+  2026-08-21 the v1.5.0 release went live while the LISTING was being saved,
+  with no deliberate click on "Publish release to Store" — so treat staging
+  a release form as potentially publishing it, and tell the user; rePebble
   code-only releases can skip the UI entirely via the release API with
   just pbwFile+version+notes (NO replaceScreenshots — listing stays).
 - `cdp.py` — fallback: minimal Chrome DevTools Protocol driver to operate
@@ -81,12 +108,46 @@ Run with the pebble-tool venv python inside the FHS env
   producing a static "rollover". Verify every steady PNG is exactly the
   platform's resolution before upload — one basalt screendump came out
   148x172 (2px border) and Rebble rejects wrong dimensions.
-- Rebble dev-portal listing mechanics: 5 screenshots max / 1 min per
-  platform, ONE file per upload (multi-file selections silently take the
-  first), per-slot hidden file inputs — map them via the ORDERED
-  tabpanels under the Screenshots panel, never by find's labels. Banner
-  lives per-platform under the Banners tab. Recipe to replace a full set:
-  delete 4 of 5 old, upload the 4 new one-by-one, delete the last old.
+- Rebble dev-portal screenshots: USE `tools/rebble_screenshots.js` plus
+  `tools/serve_gifs.py`. Do not drive that UI by hand — the 2026-08-21
+  session burned an hour on it and every trap is written into the script's
+  header. The short version, because these cost real time:
+    * "EDIT STORE LISTING" is a TOGGLE; clicking it "to be sure" closes the
+      form and every later step silently no-ops.
+    * Platform panels are LAZY — `#e-scr-<pl>` is empty until its tab
+      `#e-scr-<pl>-tab` is clicked, so counting on a fresh form reports 0
+      for every platform but the active one. This is what made screenshots
+      look deleted when they were not, and present when they were gone.
+    * The DOM does NOT refresh after a delete. `button[data-uuid]` elements
+      linger, so a delete that WORKED looks failed; retrying then targets a
+      uuid the server dropped ("Screenshot not found"). Re-read with
+      `getEditScreenshotsForPlatform(pl)` and count `<img>` srcs, ignoring
+      placeholder names.
+    * At least ONE screenshot per platform, at most five. A full swap is
+      therefore: delete to 1, upload the new ones into the free slots,
+      delete the last old one, upload the final new one.
+    * Finding the hidden file inputs by accessibility label returns refs
+      belonging to ANOTHER platform — that is how a 180x180 chalk GIF got
+      rejected by a 144x168 slot with only a dimensions error to show for
+      it. Call the page's own
+      `newScreenshotForUpload('e-screenshot-<letter>-<slot>-i', file, pl)`
+      instead; letters a..g = aplite basalt chalk diorite emery flint gabbro.
+    * `moveScreenshot(pl, slot, 'up')` fixes order afterwards.
+  Banner lives per-platform under the Banners tab.
+- Serving the GIFs to that page has two non-obvious requirements, both of
+  which fail SILENTLY: the server must be THREADED (single-threaded
+  deadlocks the instant the browser keeps a connection open, freezing the
+  whole tab) and must send `Access-Control-Allow-Private-Network: true`
+  (Chrome blocks an HTTPS page from reading localhost, and the fetch then
+  hangs forever with no error). `tools/serve_gifs.py` does both.
+- VERIFY BY CHECKSUM, NEVER BY COUNT OR UUID. Counting "5 screenshots, all
+  with fresh-looking ids" passed while an OLD seconds clip was still sitting
+  in basalt's first slot — the user spotted it, not the check. Download every
+  live asset and match its hash against the local files; that is the only
+  test that actually proves the listing. Both stores expose what you need:
+  Rebble via `assets2.rebble.io/<dims>/<id>` from the page's img srcs,
+  rePebble via GET developer.repebble.com/api/dashboard/apps/<id> (browser
+  session; the pebble-tool token gets 401 there).
 - rePebble (post-Aug-2026 migration): the release API applies
   screenshots ASYNCHRONOUSLY (they appeared hours later, after an
   outage) and silently drops files with wrong dimensions. Listing
