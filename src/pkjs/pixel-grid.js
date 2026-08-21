@@ -208,12 +208,194 @@ module.exports = {
       chev.innerHTML = open ? '&#9662;' : '&#9656;';
     });
 
-    /* Rasterize a glyph (emoji or short text) into the grid. Thresholds
-     * were tuned on a glyph battery: alpha coverage >= 0.45 builds the
-     * silhouette; on bright-bodied glyphs (median L > 90) cells darker
-     * than 0.55x the body's median luminance are carved out (eyes,
-     * mouths); 1-cell orphans are dropped (they can't render as
-     * plateaus on the watch). */
+    /* ---- binary-shape helpers, shared by the rasterizer ----
+     * All of these must stay INSIDE initialize(): Clay serializes the
+     * component with toSource() and a module-level helper would compile
+     * fine here and die on the config page with a ReferenceError. */
+
+    /* Otsu 1979: pick the threshold that maximizes between-class variance.
+     * Replaces a hardcoded coverage cut, which was either eating light
+     * glyphs or bloating heavy ones. */
+    function otsuThreshold(values) {
+      var BINS = 64, i;
+      if (!values.length) { return 0.45; }
+      var lo = values[0], hi = values[0];
+      for (i = 1; i < values.length; i++) {
+        if (values[i] < lo) { lo = values[i]; }
+        if (values[i] > hi) { hi = values[i]; }
+      }
+      if (hi - lo < 1e-6) { return (lo + hi) / 2; }
+      var hist = [];
+      for (i = 0; i < BINS; i++) { hist.push(0); }
+      for (i = 0; i < values.length; i++) {
+        hist[Math.floor((values[i] - lo) / (hi - lo) * (BINS - 1))]++;
+      }
+      var total = values.length, sumAll = 0;
+      for (i = 0; i < BINS; i++) { sumAll += (i + 0.5) * hist[i]; }
+      var w0 = 0, sum0 = 0, bestVar = -1, bestB = BINS >> 1;
+      for (i = 0; i < BINS; i++) {
+        w0 += hist[i];
+        if (!w0) { continue; }
+        var w1 = total - w0;
+        if (!w1) { break; }
+        sum0 += (i + 0.5) * hist[i];
+        var d = sum0 / w0 - (sumAll - sum0) / w1;
+        var v = w0 * w1 * d * d;
+        if (v > bestVar) { bestVar = v; bestB = i; }
+      }
+      return lo + (bestB + 1) / BINS * (hi - lo);
+    }
+
+    /* 4-connected components of cells equal to `val`. 4-connected, not 8:
+     * the watch draws an edge only between ADJACENT vertices, so corner
+     * contact is not connection there either. */
+    function componentsOf(g, val) {
+      var seen = [], r, c;
+      for (r = 0; r < ROWS; r++) {
+        seen.push([]);
+        for (c = 0; c < COLS; c++) { seen[r].push(false); }
+      }
+      var out = [];
+      for (r = 0; r < ROWS; r++) {
+        for (c = 0; c < COLS; c++) {
+          if (g[r][c] !== val || seen[r][c]) { continue; }
+          var stack = [[r, c]], comp = [];
+          seen[r][c] = true;
+          while (stack.length) {
+            var p = stack.pop(), y = p[0], x = p[1];
+            comp.push(p);
+            var nb = [[y - 1, x], [y + 1, x], [y, x - 1], [y, x + 1]];
+            for (var k = 0; k < 4; k++) {
+              var ny = nb[k][0], nx = nb[k][1];
+              if (ny < 0 || nx < 0 || ny >= ROWS || nx >= COLS) { continue; }
+              if (!seen[ny][nx] && g[ny][nx] === val) {
+                seen[ny][nx] = true;
+                stack.push([ny, nx]);
+              }
+            }
+          }
+          out.push(comp);
+        }
+      }
+      return out;
+    }
+
+    /* Weld corner-only links. On the watch two cells touching at a corner
+     * share no edge and render as disconnected floating blocks — the same
+     * rule that gives digits.h its straight-legged 7. Fill whichever EMPTY
+     * cell of the opposite diagonal carries more ink; note the two
+     * orientations have different gap cells. */
+    function weldDiagonals(g, cov) {
+      var changed = 0;
+      for (var r = 0; r < ROWS - 1; r++) {
+        for (var c = 0; c < COLS - 1; c++) {
+          var a = g[r][c], b = g[r + 1][c + 1];
+          var d = g[r][c + 1], e = g[r + 1][c];
+          if (a && b && !d && !e) {
+            if (cov[r][c + 1] >= cov[r + 1][c]) { g[r][c + 1] = 1; }
+            else { g[r + 1][c] = 1; }
+            changed++;
+          } else if (d && e && !a && !b) {
+            if (cov[r][c] >= cov[r + 1][c + 1]) { g[r][c] = 1; }
+            else { g[r + 1][c + 1] = 1; }
+            changed++;
+          }
+        }
+      }
+      return changed;
+    }
+
+    /* Drop specks, always keeping the largest component. */
+    function pruneComponents(g, minSize) {
+      var comps = componentsOf(g, 1);
+      if (!comps.length) { return; }
+      comps.sort(function (x, y) { return y.length - x.length; });
+      for (var i = 1; i < comps.length; i++) {
+        if (comps[i].length >= minSize) { continue; }
+        for (var j = 0; j < comps[i].length; j++) {
+          g[comps[i][j][0]][comps[i][j][1]] = 0;
+        }
+      }
+    }
+
+    /* Fill enclosed background pockets under maxSize: at this scale they
+     * read as noise, not as counters. */
+    function fillSmallHoles(g, maxSize) {
+      var holes = componentsOf(g, 0);
+      for (var i = 0; i < holes.length; i++) {
+        var comp = holes[i], edge = false, j;
+        for (j = 0; j < comp.length; j++) {
+          var r = comp[j][0], c = comp[j][1];
+          if (r === 0 || c === 0 || r === ROWS - 1 || c === COLS - 1) {
+            edge = true;
+            break;
+          }
+        }
+        if (edge || comp.length > maxSize) { continue; }
+        for (j = 0; j < comp.length; j++) { g[comp[j][0]][comp[j][1]] = 1; }
+      }
+    }
+
+    /* A cell is "thin" when no 2x2 block of ink contains it. Below two
+     * cells a stroke is not legible as a plateau — the project's own digit
+     * font is 2-cell for exactly this reason. Two outcomes: a thin cell
+     * with >=2 filled neighbours is part of a STROKE and gets thickened
+     * (this is what saves text stamps); one with <=1 is a STUB left by a
+     * detail carve and gets dropped, because growing stubs grows noise. */
+    function repairThin(g, cov) {
+      for (var pass = 0; pass < 2; pass++) {
+        var grow = [], drop = [], r, c;
+        for (r = 0; r < ROWS; r++) {
+          for (c = 0; c < COLS; c++) {
+            if (!g[r][c]) { continue; }
+            var inBlock = false, dr, dc;
+            for (dr = -1; dr <= 0; dr++) {
+              for (dc = -1; dc <= 0; dc++) {
+                var rr = r + dr, cc = c + dc;
+                if (rr < 0 || cc < 0 || rr + 1 >= ROWS || cc + 1 >= COLS) {
+                  continue;
+                }
+                if (g[rr][cc] && g[rr + 1][cc] && g[rr][cc + 1] &&
+                    g[rr + 1][cc + 1]) {
+                  inBlock = true;
+                }
+              }
+            }
+            if (inBlock) { continue; }
+            var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+            var deg = 0, best = null, bv = -1, k;
+            for (k = 0; k < 4; k++) {
+              var ny = nb[k][0], nx = nb[k][1];
+              if (ny < 0 || nx < 0 || ny >= ROWS || nx >= COLS) { continue; }
+              if (g[ny][nx]) { deg++; }
+              else if (cov[ny][nx] > bv) { bv = cov[ny][nx]; best = [ny, nx]; }
+            }
+            if (deg <= 1) { drop.push([r, c]); }
+            else if (best) { grow.push(best); }
+          }
+        }
+        if (!grow.length && !drop.length) { break; }
+        var i;
+        for (i = 0; i < drop.length; i++) { g[drop[i][0]][drop[i][1]] = 0; }
+        for (i = 0; i < grow.length; i++) { g[grow[i][0]][grow[i][1]] = 1; }
+      }
+    }
+
+    /* Rasterize a glyph (emoji or short text) into the grid.
+     *
+     * Pipeline, in order, each step earning its place on a 16-glyph bench
+     * (🙂❤️⭐🌙👍😎🎱🆘🌍👌😉🔥☕🐱, "A", "42") measured offline against the
+     * watch's two hard rules — no corner-only links, no sub-2-cell features:
+     *   1. supersample the glyph 8x and reduce to per-cell coverage+luminance
+     *   2. Otsu threshold (clamped) instead of a fixed coverage cut
+     *   3. left-right symmetry snap on near-symmetric silhouettes
+     *   4. detail carve by REGION, never per cell
+     *   5. fill pinhole gaps, prune specks
+     *   6. thicken thin strokes / drop stubs
+     *   7. weld corner-only links, iterating with prune to a fixed point
+     * Before this, six of the sixteen produced floating blocks and "42"
+     * came out as 26 illegible 1-cell stroke cells; after, both counts are
+     * zero across the whole battery. */
     function rasterizeGlyph(ch) {
       var S = 8;
       var W = COLS * S, H = ROWS * S;
@@ -225,7 +407,11 @@ module.exports = {
       gctx.textAlign = 'center';
       gctx.textBaseline = 'alphabetic';
       var ref = 100;
-      gctx.font = ref + 'px sans-serif';
+      // BOLD matters for text stamps and is free for emoji (colour bitmap
+      // glyphs ignore weight): at 22 cells a regular weight lands 1-cell
+      // stems, which the watch cannot render as plateaus at all — "42" came
+      // out as 26 illegible thin cells before this.
+      gctx.font = 'bold ' + ref + 'px sans-serif';
       var m = gctx.measureText(ch);
       var asc = m.actualBoundingBoxAscent || ref * 0.8;
       var desc = m.actualBoundingBoxDescent || ref * 0.2;
@@ -234,7 +420,7 @@ module.exports = {
       var gh = asc + desc;
       if (!gw || !gh) { return null; }
       var size = ref * Math.min(W / gw, H / gh) * 0.98;
-      gctx.font = size + 'px sans-serif';
+      gctx.font = 'bold ' + size + 'px sans-serif';
       m = gctx.measureText(ch);
       asc = m.actualBoundingBoxAscent || size * 0.8;
       desc = m.actualBoundingBoxDescent || size * 0.2;
@@ -275,10 +461,20 @@ module.exports = {
           lum[r][c] = lN ? lSum / lN : 255;
         }
       }
+      // Otsu over the inked cells only (the empty background would drag the
+      // split down and bloat every silhouette), clamped so a very light or
+      // very heavy glyph can't run away with the outline.
+      var inked = [];
+      for (r = 0; r < ROWS; r++) {
+        for (c = 0; c < COLS; c++) {
+          if (cov[r][c] > 0.02) { inked.push(cov[r][c]); }
+        }
+      }
+      var thr = Math.max(0.30, Math.min(0.60, otsuThreshold(inked)));
       var out = emptyGrid();
       for (r = 0; r < ROWS; r++) {
         for (c = 0; c < COLS; c++) {
-          out[r][c] = cov[r][c] >= 0.45 ? 1 : 0;
+          out[r][c] = cov[r][c] >= thr ? 1 : 0;
         }
       }
       // Symmetry snap (the NixOS C2 lesson, applied left-right): on a
@@ -300,7 +496,7 @@ module.exports = {
       if (pairs && mism / pairs <= 0.15) {
         for (r = 0; r < ROWS; r++) {
           for (c = 0; c < (COLS >> 1); c++) {
-            var v2 = (cov[r][c] + cov[r][COLS - 1 - c]) / 2 >= 0.45 ? 1 : 0;
+            var v2 = (cov[r][c] + cov[r][COLS - 1 - c]) / 2 >= thr ? 1 : 0;
             out[r][c] = v2;
             out[r][COLS - 1 - c] = v2;
           }
@@ -315,32 +511,39 @@ module.exports = {
       if (!bodyLs.length) { return null; }
       bodyLs.sort(function (a, b) { return a - b; });
       var bodyL = bodyLs[bodyLs.length >> 1];
-      if (bodyL > 90) {
-        for (r = 0; r < ROWS; r++) {
-          for (c = 0; c < COLS; c++) {
-            if (out[r][c] && lum[r][c] < bodyL * 0.55) { out[r][c] = 0; }
-          }
-        }
-      }
-      // The mirror case: BRIGHT details on a darker body (🆘, boxed
-      // arrows, 🎱) — engrave cells clearly brighter than the body's
-      // median. Self-guarding: on bright bodies (🙂, 👻) bodyL + 80 is
-      // unreachable, and mild gloss/shading stays well under the margin.
-      for (r = 0; r < ROWS; r++) {
-        for (c = 0; c < COLS; c++) {
-          if (out[r][c] && lum[r][c] > bodyL + 80) { out[r][c] = 0; }
-        }
-      }
+      // Detail carve, as REGIONS rather than per cell. Dark details (eyes,
+      // mouths) on a bright body, and the mirror case of BRIGHT details on
+      // a darker body (🆘, boxed arrows, 🎱 — self-guarding, since bodyL+80
+      // is unreachable on a bright body and gloss stays under the margin).
+      // A carve only survives if it is a connected blob of >=3 cells: that
+      // is what an eye or a mouth looks like here, and carving cell by cell
+      // shredded glyphs into pepper noise (the coffee cup lost 5 cells to
+      // floating blocks that way, and the smiley's mouth came out broken).
+      var carve = emptyGrid();
       for (r = 0; r < ROWS; r++) {
         for (c = 0; c < COLS; c++) {
           if (!out[r][c]) { continue; }
-          var n = 0;
-          if (r > 0 && out[r - 1][c]) { n++; }
-          if (r < ROWS - 1 && out[r + 1][c]) { n++; }
-          if (c > 0 && out[r][c - 1]) { n++; }
-          if (c < COLS - 1 && out[r][c + 1]) { n++; }
-          if (!n) { out[r][c] = 0; }
+          if (bodyL > 90 && lum[r][c] < bodyL * 0.55) { carve[r][c] = 1; }
+          else if (lum[r][c] > bodyL + 80) { carve[r][c] = 1; }
         }
+      }
+      var blobs = componentsOf(carve, 1);
+      for (var bi = 0; bi < blobs.length; bi++) {
+        if (blobs[bi].length < 3) { continue; }
+        for (var bj = 0; bj < blobs[bi].length; bj++) {
+          out[blobs[bi][bj][0]][blobs[bi][bj][1]] = 0;
+        }
+      }
+
+      fillSmallHoles(out, 2);
+      pruneComponents(out, 4);
+      repairThin(out, cov);
+      // Weld and prune interact — pruning a speck can expose a new
+      // corner-only link and welding can re-attach one — so iterate to a
+      // fixed point instead of running each once.
+      for (var it = 0; it < 8; it++) {
+        pruneComponents(out, 4);
+        if (!weldDiagonals(out, cov)) { break; }
       }
       return out;
     }

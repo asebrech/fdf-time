@@ -255,12 +255,32 @@ Run with the pebble-tool venv python inside the FHS env
   cell resolution — this deliberately sidesteps the whole
   downsample-fine-art problem that made the logo splashes painful — plus a
   "Stamp" field that rasterizes any emoji/short text the phone can render
-  (alpha coverage ≥0.45 for the silhouette; on bright-bodied glyphs cells
-  darker than 0.55× the body median luminance are carved: eyes/mouths;
-  cells brighter than body median + 80 are engraved too — white-on-solid
-  glyphs like 🆘/boxed arrows/🎱 come out as letters in relief, while
-  bright bodies self-guard since +80 is unreachable and gloss shading
-  stays under the margin; 1-cell orphans dropped). Two symmetry fixes (user: faces came out
+  — REWRITTEN 2026-08-21 ("améliorer au maximum cette partie"), pipeline now:
+  (1) 8× supersample → per-cell coverage+luminance; (2) OTSU threshold over
+  the INKED cells only (background would drag the split down and bloat every
+  silhouette), clamped to [0.30, 0.60] — replaces a hardcoded 0.45 that ate
+  light glyphs and bloated heavy ones; (3) left-right symmetry snap;
+  (4) detail carve BY REGION — dark-on-bright (eyes/mouths, body median
+  L>90 and cell <0.55×) and the mirror bright-on-dark case (>median+80,
+  self-guarding: unreachable on a bright body, so 🆘/boxed arrows/🎱 come
+  out in relief), but a carve only applies if it is a connected blob of ≥3
+  cells: per-cell carving shredded glyphs into pepper noise; (5) fill
+  enclosed ≤2-cell pinholes, prune components <4 cells; (6) repairThin —
+  a cell in no 2×2 ink block is thin, and is THICKENED if it has ≥2 filled
+  neighbours (a stroke: this is what saves text) or DROPPED if ≤1 (a stub
+  left by a carve; growing stubs grows noise); (7) weld corner-only links,
+  iterating with prune to a fixed point. Also: the canvas font is now BOLD
+  — free for emoji (colour bitmaps ignore weight), decisive for text, whose
+  regular-weight stems land 1 cell wide and cannot render as plateaus.
+  WHY these rules: the two hard renderer constraints, corner-only links
+  render as floating blocks and sub-2-cell features are illegible, are now
+  ENFORCED by the rasterizer instead of hoped for. Measured on a 16-glyph
+  bench offline (real Noto Color Emoji through PIL, tools-style replay):
+  before, 6 of 16 glyphs produced floating blocks (☕ alone had 5) and "42"
+  came out as 26 thin cells; after, floating blocks and thin cells are ZERO
+  across the whole battery. Bench + the JS-vs-Python differential test live
+  in the session scratchpad, not the repo — rebuild them from this note if
+  the pipeline is touched again. Two symmetry fixes (user: faces came out
   lopsided): center the INK box, not the advance width (emoji ink is often
   off-center in its advance — a sub-cell offset flips edge columns), and a
   left-right symmetry snap (mirror-averaged coverage) that engages only
@@ -269,6 +289,13 @@ Run with the pebble-tool venv python inside the FHS env
   never the carve (a 😉 keeps its wink). Validated on a glyph battery:
   bold shapes (🙂❤️⭐, letters) come out great, detailed ones (🌍👌)
   blob — acceptable because the user sees and hand-edits.
+  Headless JS verification (waf does NOT parse JS): `node --check` for
+  syntax, plus a differential test that slices the SHIPPED rasterizer text
+  out of pixel-grid.js, runs it on the same pixel buffer as the Python
+  reference through a stub canvas, and diffs the grids — that is what
+  catches a transcription slip in a port. And check the Clay closure trap
+  mechanically: `String(component.initialize)` must contain every helper's
+  definition, since toSource() drops the module scope.
   Editor UX: the component folds behind a settings-row header (label +
   live pixel thumbnail + chevron), everything inside stacked full-width
   (side-by-side controls got crushed on phones). Undo/redo buttons keep a
