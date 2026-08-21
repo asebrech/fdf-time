@@ -65,6 +65,7 @@ module.exports = [
         "label": "Ocean animation",
         "options": [
           { "label": "Silk (ultra-fluid)", "value": "3" },
+          { "label": "Pulse (beats with your heart)", "value": "4" },
           { "label": "Fluid (updates every second)", "value": "0" },
           { "label": "Eco (drifts once a minute)", "value": "1" },
           { "label": "Frozen", "value": "2" }
@@ -98,6 +99,7 @@ module.exports = [
           { "label": "My drawing", "value": "5" },
           { "label": "Today's date", "value": "6" },
           { "label": "Battery", "value": "8" },
+          { "label": "Heart rate", "value": "9" },
           { "label": "NixOS", "value": "2" },
           { "label": "Orbit spin", "value": "7" },
           { "label": "Off", "value": "0" }
@@ -114,6 +116,7 @@ module.exports = [
           { "label": "Today's date", "value": "4" },
           { "label": "Seconds", "value": "2" },
           { "label": "Battery", "value": "9" },
+          { "label": "Heart rate", "value": "10" },
           { "label": "NixOS", "value": "7" },
           { "label": "Orbit spin", "value": "1" },
           { "label": "Off", "value": "0" }

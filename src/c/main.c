@@ -23,22 +23,26 @@
 typedef struct {
   uint8_t theme;        // palette index, see fdf_set_style (0 = tokyo night)
   uint8_t wave_mode;    // 0 fluid (second ticks), 1 eco (minute drift),
-                        // 2 frozen, 3 silk (continuous ~15 fps timer)
+                        // 2 frozen, 3 silk (continuous ~15 fps timer),
+                        // 4 pulse (silk timer, speed follows the heart
+                        // rate — see s_pulse_bpm)
   uint8_t gradient;     // per-line wall gradients on/off
   uint8_t display_mode; // 0 classic HH/MM terrain, 1 seconds SS terrain
   uint8_t splash_style; // launch splash: 0 off, 1 "42", 2 NixOS, 4 Pebble
                         // slashed-e, 5 user-drawn grid, 6 today's date,
                         // 7 orbit (the time rises during a full camera
-                        // turn), 8 battery gauge. 3 was Arch, removed.
+                        // turn), 8 battery gauge, 9 heart rate (falls back
+                        // to "42" when no HR sensor). 3 was Arch, removed.
                         // Was a bool ("42" on/off): 0/1 keep meaning when
                         // persisted.
   uint8_t shake_action; // 0 off, 1 orbit spin, 2 peek at seconds (reverts
                         // at the minute), 3 toggle seconds (sticky until
-                        // the next shake), 4-9 view peeks with 6 s
+                        // the next shake), 4-10 view peeks with 6 s
                         // auto-revert: 4 date, 5 the user's drawing (falls
                         // back to orbit if none saved), 6 "42", 7 NixOS,
-                        // 8 Pebble, 9 battery. 2/3 exist in classic mode
-                        // only; values match the pre-select boolean so
+                        // 8 Pebble, 9 battery, 10 heart rate (falls back
+                        // to orbit without a sensor). 2/3 exist in classic
+                        // mode only; values match the pre-select boolean so
                         // persisted settings keep meaning orbit.
   bool bt_vibe;         // double pulse when the phone connection drops
   uint8_t wave_rest;    // pause the swell while the backlight is off; only
@@ -156,6 +160,18 @@ static uint64_t s_lit_on_ms;  // when the backlight last turned on
 // Rebase applied to the wall-clock phase so the swell resumes exactly where
 // it froze after a rest, instead of teleporting to the current wall phase.
 static int32_t s_wave_offset;
+// Pulse wave mode (4): the swell's speed follows the wearer's heart rate —
+// one wavelength per 30 beats, so at 60 BPM it breathes exactly like Silk
+// and speeds up as the heart does. Deliberately NO continuous sensor
+// stream (that is a battery leak, see the heart-scene note): the BPM is
+// the firmware's own duty-cycled reading, peeked once a minute — plus any
+// fresh reading the heart scene happens to receive. The phase INTEGRATES
+// (unlike the wall-clock modes) so a wave rest pauses it for free — no
+// rebase needed, just a dt clamp on resume. 0 BPM (sensor-less color
+// watches, health off, no reading yet) paces like a calm 60.
+static int s_pulse_bpm;
+static uint64_t s_pulse_last_ms;
+#define PULSE_BEATS_PER_WAVE 30
 #endif
 
 static bool prv_use_24h(void);
@@ -251,6 +267,9 @@ static void prv_subscribe_ticks(void);
 static void prv_enter_view_peek(int scene);
 static void prv_exit_view_peek(void);
 static void prv_start_spin(void);
+static void prv_heart_start(void);
+static void prv_heart_stop(void);
+static bool prv_heart_ok(void);
 
 static uint64_t prv_now_ms(void) {
   time_t s;
@@ -289,6 +308,8 @@ static void prv_set_wave_phase_now(void) {
   s_model.wave_phase = (prv_raw_wave_phase() + s_wave_offset) &
                        (TRIG_MAX_ANGLE - 1);
 }
+
+static void prv_pulse_refresh(void);
 #endif
 
 static void prv_start_spin(void) {
@@ -303,6 +324,158 @@ static void prv_start_spin(void) {
     .stopped = prv_spin_stopped,
   }, NULL);
   animation_schedule(s_spin_anim);
+}
+
+// --- heart-rate scene (splash 9 / shake 10) ---
+
+// The ECG strip scrolls one period per heartbeat, driven by its own ~15 fps
+// timer while the scene is up. The optical sensor is duty-cycled by the
+// firmware (a peek can be minutes old), so for the scene's few seconds we
+// request 1 s sampling and listen for HealthEventHeartRateUpdate — the
+// digits morph if a fresh reading lands mid-peek. The request MUST be
+// cancelled on every exit path: the header warns it outlives the app
+// otherwise, and a standing 1 s optical sample period is a battery leak.
+// No sensor (or Pebble Health off): prv_heart_ok() gates scene entry — the
+// shake falls back to the orbit like the empty drawing does, the splash to
+// the "42" — so neither gesture is ever dead. Until the first reading the
+// scene shows the monitor idiom for "no signal": flatline and "--".
+#define HEART_FRAME_MS 66
+#if defined(PBL_HEALTH)
+static AppTimer *s_heart_timer;
+static bool s_heart_active;
+static int s_heart_bpm;
+static uint32_t s_heart_phase16;  // beat phase, 0..65535 = one trace period
+static uint64_t s_heart_last_ms;
+// Beat lock (2026-08-21): HealthEventHRVUpdate carries the peak-to-peak
+// interval — the REAL time between two beats — so the trace can run at the
+// instantaneous rhythm instead of a filtered average, and the spike can be
+// pulled onto the beat itself. Both degrade gracefully: with no PPI the
+// period falls back to the averaged BPM and the trace free-runs exactly as
+// before. The two sample-period requests share one sensor subscription
+// (driven at the shorter period), so asking for HRV on top of the 1 s heart
+// rate costs essentially nothing extra — but it must be cancelled on the
+// same paths, for the same reason.
+static uint16_t s_heart_ppi_ms;   // last peak-to-peak interval, 0 = none
+static uint64_t s_heart_ppi_at;   // when it arrived (staleness guard)
+#define HEART_PPI_MIN_MS 300      // 200 BPM — anything shorter is noise
+#define HEART_PPI_MAX_MS 2000     // 30 BPM
+#define HEART_PPI_STALE_MS 10000
+
+static void prv_heart_frame_cb(void *data) {
+  s_heart_timer = app_timer_register(HEART_FRAME_MS, prv_heart_frame_cb, NULL);
+  uint64_t now = prv_now_ms();
+  uint32_t dt = (uint32_t)(now - s_heart_last_ms);
+  s_heart_last_ms = now;
+  if (dt > 500) {
+    dt = 500;  // a hiccup must not teleport the trace (nor overflow below)
+  }
+  // A fresh peak-to-peak interval is the truest period available: it tracks
+  // beat-to-beat variation, where the averaged BPM only tracks the trend.
+  uint32_t period_ms = 0;
+  if (s_heart_ppi_ms && now - s_heart_ppi_at < HEART_PPI_STALE_MS) {
+    period_ms = s_heart_ppi_ms;
+  } else if (s_heart_bpm > 0) {
+    period_ms = 60000u / (uint32_t)s_heart_bpm;
+  }
+  if (period_ms) {
+    s_heart_phase16 = (s_heart_phase16 + dt * 65536u / period_ms) & 0xFFFF;
+  }
+  fdf_model_heart_frame(&s_model, s_heart_bpm, s_heart_phase16);
+  layer_mark_dirty(s_layer);
+}
+
+static void prv_health_handler(HealthEventType event, void *context) {
+  if (!s_heart_active) {
+    return;
+  }
+  if (event == HealthEventHRVUpdate) {
+    uint16_t ppi = health_service_peek_hrv_ppi_ms();
+    APP_LOG(APP_LOG_LEVEL_INFO, "HRV ppi=%u ms", (unsigned)ppi);
+    if (ppi < HEART_PPI_MIN_MS || ppi > HEART_PPI_MAX_MS) {
+      return;  // dropped beat or noise: keep coasting on the last good one
+    }
+    s_heart_ppi_ms = ppi;
+    s_heart_ppi_at = prv_now_ms();
+    // Pull the sweep a QUARTER of the way onto the beat instead of snapping
+    // it. A snap makes every late or jittery event yank the trace sideways;
+    // a quarter step converges in three or four beats and still looks like a
+    // continuous paper feed. This is the whole difference between "runs at
+    // your rate" and "beats with you".
+    int32_t target = (int32_t)fdf_heart_beat_phase(s_heart_bpm);
+    int32_t err = (int32_t)s_heart_phase16 - target;
+    if (err > 32768) {
+      err -= 65536;
+    } else if (err < -32768) {
+      err += 65536;
+    }
+    s_heart_phase16 = (uint32_t)((int32_t)s_heart_phase16 - err / 4) & 0xFFFF;
+    return;
+  }
+  if (event != HealthEventHeartRateUpdate) {
+    return;
+  }
+  int bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+#if defined(PBL_COLOR)
+  if (bpm > 0) {
+    s_pulse_bpm = bpm;  // free freshness for the pulse wave mode
+  }
+#endif
+  if (bpm != s_heart_bpm) {
+    s_heart_bpm = bpm;
+    // The number changed under the user's eyes: morph like the seconds do
+    // (the frame timer keeps rewriting the destination, so the scroll
+    // continues through the morph).
+    fdf_model_set_heart(&s_model, bpm, s_heart_phase16);
+    prv_start_morph_ms(SECONDS_MORPH_MS);
+  }
+}
+#endif
+
+static bool prv_heart_ok(void) {
+#if defined(PBL_HEALTH)
+  time_t now = time(NULL);
+  return (health_service_metric_accessible(HealthMetricHeartRateBPM, now,
+                                           now) &
+          HealthServiceAccessibilityMaskAvailable) != 0;
+#else
+  return false;
+#endif
+}
+
+// Stamps the scene (so the caller's morph plays over it) and, with health
+// available, spins up the sensor + scroll timer. Idempotent via _stop.
+static void prv_heart_start(void) {
+  int bpm = 0;
+#if defined(PBL_HEALTH)
+  prv_heart_stop();
+  s_heart_active = true;
+  health_service_set_heart_rate_sample_period(1);
+  health_service_set_hrv_sample_period(1);  // shares the same subscription
+  health_service_events_subscribe(prv_health_handler, NULL);
+  s_heart_bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  s_heart_ppi_ms = 0;  // a PPI from a previous peek is meaningless now
+  s_heart_phase16 = 0;
+  s_heart_last_ms = prv_now_ms();
+  s_heart_timer = app_timer_register(HEART_FRAME_MS, prv_heart_frame_cb, NULL);
+  bpm = s_heart_bpm;
+#endif
+  fdf_model_set_heart(&s_model, bpm, 0);
+}
+
+static void prv_heart_stop(void) {
+#if defined(PBL_HEALTH)
+  if (!s_heart_active) {
+    return;
+  }
+  s_heart_active = false;
+  if (s_heart_timer) {
+    app_timer_cancel(s_heart_timer);
+    s_heart_timer = NULL;
+  }
+  health_service_events_unsubscribe();
+  health_service_set_heart_rate_sample_period(0);
+  health_service_set_hrv_sample_period(0);  // clears only its own request
+#endif
 }
 
 // NOTE on gesture ideas: distinguishing wrist flicks from glass taps was
@@ -339,11 +512,13 @@ static void prv_tap_handler(AccelAxisType axis, int32_t direction) {
   // View peeks (date / drawing / logos) work in every display mode. With
   // no drawing saved yet, that choice falls back to the orbit so the
   // gesture is never dead.
-  if (s_settings.shake_action >= 4 && s_settings.shake_action <= 9) {
+  if (s_settings.shake_action >= 4 && s_settings.shake_action <= 10) {
     if (s_view_peek) {
       prv_exit_view_peek();
     } else if (s_settings.shake_action == 5 && !s_has_custom) {
       prv_start_spin();
+    } else if (s_settings.shake_action == 10 && !prv_heart_ok()) {
+      prv_start_spin();  // no HR sensor / Pebble Health off
     } else {
       prv_enter_view_peek(s_settings.shake_action);
     }
@@ -427,6 +602,9 @@ static void prv_show_time(void) {
 // either framing.
 static void prv_show_view_now(int action) {
   s_overlay[0] = '\0';
+  // Whatever scene comes up, the heart sensor/timer must not outlive its
+  // own (e.g. the low-battery alert barging in over a heart peek).
+  prv_heart_stop();
   switch (action) {
     case 4: {
       time_t now = time(NULL);
@@ -446,6 +624,12 @@ static void prv_show_view_now(int action) {
       fdf_model_set_battery(&s_model, st.charge_percent, st.is_charging);
       break;
     }
+    case 10:
+      // Heart rate: the BPM is terrain too; prv_heart_start stamps the
+      // scene itself (the morph below plays over it).
+      fdf_model_set_mode(&s_model, false);
+      prv_heart_start();
+      break;
     default:
       if (action != 6) {
         fdf_model_set_mode(&s_model, false);
@@ -460,6 +644,7 @@ static void prv_view_revert_cb(void *data) {
   s_view_timer = NULL;
   if (s_view_peek) {
     s_view_peek = false;
+    prv_heart_stop();  // before the time stamp — the frame timer rewrites z_to
     fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
     prv_show_time();  // lands back on time, or seconds if s_peeking held
   }
@@ -482,6 +667,7 @@ static void prv_exit_view_peek(void) {
     s_view_timer = NULL;
   }
   s_view_peek = false;
+  prv_heart_stop();
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
   prv_show_time();
 }
@@ -569,10 +755,13 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 #if defined(PBL_COLOR)
   // The terrain swell rolls with the phase: one wavelength every 30 ticks,
   // continuous across the minute boundary. Fluid mode ticks every second;
-  // eco mode drifts one step per minute; frozen keeps phase 0; silk is
-  // driven by its own timer, not ticks. 1-bit has no terrain and always
-  // stays on minute ticks. While the waves rest (backlight off) the phase
-  // freezes in place; the backlight handler rebases it on wake.
+  // eco mode drifts one step per minute; frozen keeps phase 0; silk/pulse
+  // are driven by their own timer, not ticks. 1-bit has no terrain and
+  // always stays on minute ticks. While the waves rest (backlight off) the
+  // phase freezes in place; the backlight handler rebases it on wake.
+  if (units_changed & MINUTE_UNIT) {
+    prv_pulse_refresh();  // pulse pace follows the duty-cycled HR reading
+  }
   if ((s_settings.wave_mode == 0 || s_settings.wave_mode == 1) &&
       !prv_waves_resting()) {
     prv_set_wave_phase_now();
@@ -584,17 +773,50 @@ static void prv_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 #if defined(PBL_COLOR)
 static void prv_wave_timer_cb(void *data) {
   s_wave_timer = app_timer_register(WAVE_FRAME_MS, prv_wave_timer_cb, NULL);
-  prv_set_wave_phase_now();
+  if (s_settings.wave_mode == 4) {
+    // Pulse: integrate the phase at the heart's pace instead of mapping the
+    // wall clock. The dt clamp keeps the first frame after a wave rest (or
+    // any scheduling hiccup) from teleporting the swell.
+    uint64_t now = prv_now_ms();
+    uint32_t dt = (uint32_t)(now - s_pulse_last_ms);
+    s_pulse_last_ms = now;
+    if (dt > 500) {
+      dt = 500;
+    }
+    int bpm = s_pulse_bpm > 0 ? s_pulse_bpm : 60;
+    s_model.wave_phase =
+        (s_model.wave_phase +
+         (int32_t)(((int64_t)dt * bpm * TRIG_MAX_ANGLE) /
+                   (60000 * PULSE_BEATS_PER_WAVE))) &
+        (TRIG_MAX_ANGLE - 1);
+  } else {
+    prv_set_wave_phase_now();
+  }
   layer_mark_dirty(s_layer);
 }
 
-// (Re)start or stop the silk frame timer to match the mode and rest state.
+// Refresh the pulse pace from the firmware's duty-cycled HR reading. A peek
+// is free (no sensor request); it returns the filtered value, at most
+// 15 minutes old, or 0 when there is none.
+static void prv_pulse_refresh(void) {
+#if defined(PBL_HEALTH)
+  if (s_settings.wave_mode == 4) {
+    s_pulse_bpm =
+        (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  }
+#endif
+}
+
+// (Re)start or stop the silk/pulse frame timer to match the mode and rest
+// state.
 static void prv_apply_wave_engine(void) {
   if (s_wave_timer) {
     app_timer_cancel(s_wave_timer);
     s_wave_timer = NULL;
   }
-  if (s_settings.wave_mode == 3 && !prv_waves_resting()) {
+  if ((s_settings.wave_mode == 3 || s_settings.wave_mode == 4) &&
+      !prv_waves_resting()) {
+    s_pulse_last_ms = prv_now_ms();
     s_wave_timer = app_timer_register(WAVE_FRAME_MS, prv_wave_timer_cb, NULL);
   }
 }
@@ -625,6 +847,7 @@ static void prv_backlight_handler(bool on) {
 static void prv_splash_done(void *data) {
   s_splash_timer = NULL;
   s_splash_overlay = false;
+  prv_heart_stop();  // the heart splash owns a sensor request + frame timer
   // Full-region splashes force the classic framing; hand the mode its own
   // framing back before the time morph.
   fdf_model_set_mode(&s_model, s_settings.display_mode == 1);
@@ -675,6 +898,7 @@ static void prv_apply_settings(void) {
     s_view_timer = NULL;
   }
   s_view_peek = false;
+  prv_heart_stop();
 #if defined(PBL_COLOR)
   if (s_settings.wave_mode == 2) {
     s_model.wave_phase = 0;
@@ -689,6 +913,7 @@ static void prv_apply_settings(void) {
   }
   backlight_service_subscribe(prv_backlight_handler);
 #endif
+  prv_pulse_refresh();
   prv_apply_wave_engine();
 #endif
   prv_subscribe_ticks();
@@ -910,6 +1135,14 @@ static void prv_window_load(Window *window) {
     fdf_model_set_seconds(&s_model, t->tm_mday);
     prv_start_morph_ms(MORPH_DURATION_MS);
     s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
+  } else if (s_settings.splash_style == 9 && prv_heart_ok()) {
+    // Heart-rate splash: prv_heart_start stamps the scene and starts the
+    // ECG scroll; without a sensor the branch is skipped and style 9 falls
+    // through set_splash's default to the "42" below.
+    fdf_model_set_mode(&s_model, false);
+    prv_heart_start();
+    prv_start_morph_ms(MORPH_DURATION_MS);
+    s_splash_timer = app_timer_register(SPLASH_MS, prv_splash_done, NULL);
   } else if (s_settings.splash_style == 7) {
     // Orbit splash: no intermediate scene — the time rises while the
     // camera makes one full turn.
@@ -941,6 +1174,9 @@ static void prv_window_unload(Window *window) {
     s_view_timer = NULL;
   }
   animation_unschedule_all();
+  // Cancels the standing 1 s HR sample-period request — it would outlive
+  // the app otherwise (see the heart-scene note).
+  prv_heart_stop();
 #if defined(PBL_COLOR)
   if (s_wave_timer) {
     app_timer_cancel(s_wave_timer);

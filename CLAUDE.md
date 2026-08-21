@@ -88,11 +88,21 @@ Run with the pebble-tool venv python inside the FHS env
   GET developer.repebble.com/api/dashboard/apps/<id> — the ground truth
   for verifying edits landed.
 
-## Versioning policy (agreed with the user, 2026-08-13)
+## Versioning policy (agreed with the user, 2026-08-13; loosened 2026-08-21)
 
-- GitHub tags are the source of truth: bump package.json + tag vX.Y.Z ONLY
-  for watch-code changes, and push the same number to BOTH stores (rePebble
-  release API + Rebble dev-portal release).
+- COMMITS ARE FREE AND DECOUPLED FROM VERSIONS (user's call, 2026-08-21:
+  "c'est un peu chiant qu'à chaque fois qu'on veut commit on fait une poussée
+  de version"). Commit whenever work is worth recording — mid-feature,
+  unvalidated, debug logs still in — with a plain descriptive subject and NO
+  version prefix. Several commits per release is the normal shape. Do not
+  touch package.json's version, do not tag, and do not push to any store
+  just because something was committed.
+- A RELEASE is a separate, deliberate act, and only then: bump
+  package.json + tag vX.Y.Z, and push that same number to BOTH stores
+  (rePebble release API + Rebble dev-portal release). Only watch-code
+  changes earn a release. The user says when.
+- Release commits keep the historical "vX.Y.Z: summary" subject form; that
+  prefix is what marks a commit AS the release.
 - Store listing changes (screenshots, GIFs, banner, description) must NOT
   bump the version: use the store web UIs (rePebble dashboard, Rebble
   dev-portal edit) — drivable via Brave + tools-style CDP if needed.
@@ -170,6 +180,53 @@ Run with the pebble-tool venv python inside the FHS env
   et un carré"); a long thin 20-cell bar with a track; that bar plus a 3x5
   "%" glyph. What passed is the number plus a drawn battery — the pictogram
   is what makes the scene self-explanatory.
+  Heart-rate scene (2026-08-19, splash 9 / shake 10, Clay label "Heart
+  rate"): a medical-monitor ECG strip (2-cell baseline rows 8-9, QRS spike
+  up to row 3, S-dip to row 11, T-bump) scrolling LEFT one full period per
+  heartbeat via its own 66 ms AppTimer, BPM digits in the MM slot, whole
+  scene tinted by rate (palette 6 calm → 9 racing, same vivid half as the
+  battery). Strip is inner cols 1-14 because the probe intersection
+  (tools-style projection replay over all 7 platforms) caps row 3 at col 14
+  — every scroll position of the spike stays on screen. ≥100 BPM: hundreds
+  digit in the HH tens slot (cols 1-6 rows 1-10), strip keeps its right
+  half (cols 8-14). No reading: flatline + "--" (monitor idiom). Health
+  gotchas: the sensor is duty-cycled (peek can be minutes old) so the scene
+  requests health_service_set_heart_rate_sample_period(1) + subscribes
+  HealthEventHeartRateUpdate for live digits, and the request MUST be
+  cancelled on EVERY exit path (it outlives the app otherwise — battery
+  leak); prv_heart_stop() is wired into view revert/exit, apply_settings,
+  splash_done, show_view_now entry and window_unload. prv_heart_ok()
+  (health_service_metric_accessible & Available) gates entry: shake falls
+  back to orbit, splash to "42" — aplite has no PBL_HEALTH at all (stubs),
+  basalt/chalk have PBL_HEALTH but no HR hardware, flint (Pebble 2 Duo) has
+  no HR sensor either. QEMU surprise: basalt QEMU DELIVERS synthetic HR
+  (an update event landed with 20 bpm), so the event→morph path is testable
+  headless; visual tests still force the BPM in a scratch build (splash 9 +
+  SPLASH_MS 90000). VERIFIED on the real Time 2 on 2026-08-19: the 2026
+  firmware delivers HR readings and events to apps fine — unlike the accel
+  data service, health is trustworthy ("ça marche super bien").
+  BEAT LOCK (2026-08-21, user: "elle suit pas les battements ?"): the
+  averaged HealthMetricHeartRateBPM only gives a RATE, so the trace ran at
+  the right speed but free of the actual beats. `HealthEventHRVUpdate` +
+  `health_service_peek_hrv_ppi_ms()` carry the real peak-to-peak interval:
+  the frame timer now takes its period from a fresh PPI (falling back to
+  60000/bpm when none, so nothing is ever worse than before), and each
+  accepted beat pulls the sweep a QUARTER of the way onto
+  `fdf_heart_beat_phase(bpm)` — the phase where the spike enters the strip's
+  RIGHT edge (paper feeds left). Quarter, not a snap: a snap yanks the trace
+  on every late/jittery event. PPI outside 300-2000 ms is dropped as a
+  missed beat. `health_service_set_hrv_sample_period(1)` SHARES the scene's
+  existing 1 s sensor subscription (the header: driven at the shorter of the
+  two periods) so it is nearly free — but it needs the same cancel-on-every-
+  exit discipline, and 0 clears only its own request. The lock target math
+  must aim at the MIDDLE of an offset's phase bucket: the stamp truncates
+  `(sweep16 * len) >> 16`, so the bucket's lower edge rounds back one cell
+  early (verified by round-tripping both layouts offline). Displayed number
+  deliberately stays on the FILTERED metric while the animation uses PPI: a
+  number flickering beat to beat is unreadable, an animation that does is
+  exactly the point. A temporary `APP_LOG("HRV ppi=...")` is in
+  prv_health_handler to check on-watch whether events actually arrive
+  per-beat — REMOVE IT once validated.
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map. Plus a `%` glyph
   (battery scene). Glyph rule: strokes move between columns ORTHOGONALLY,
@@ -328,8 +385,14 @@ Run with the pebble-tool venv python inside the FHS env
   the `_PBL_API_EXISTS_<fn>` marker macro directly — `PBL_API_EXISTS()`
   inside `#if` trips -Wexpansion-to-defined. Wave modes: silk
   (66 ms AppTimer interpolates the phase continuously), fluid (second
-  ticks), eco (minute drift), frozen; 1-bit has no terrain and stays on
-  MINUTE_UNIT unless the seconds view needs SECOND_UNIT. Wave rest
+  ticks), eco (minute drift), frozen, pulse (2026-08-19, value 4, Clay
+  "Pulse (beats with your heart)": silk's timer but the phase INTEGRATES at
+  one wavelength per 30 beats — at 60 BPM exactly silk's pace — from the
+  firmware's duty-cycled HR reading, peeked once a minute plus whatever the
+  heart scene receives; NO sensor request, zero battery cost; integration
+  means wave rest pauses it for free, just a 500 ms dt clamp on resume; no
+  reading/no sensor paces like a calm 60); 1-bit has no terrain and stays
+  on MINUTE_UNIT unless the seconds view needs SECOND_UNIT. Wave rest
   (`wave_rest`, Clay `WaveRest`, default on): the swell pauses while the
   backlight is off — silk timer stopped, fluid dropped to minute ticks —
   and on wake the phase is REBASED (`s_wave_offset`) so it resumes from

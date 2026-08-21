@@ -528,6 +528,152 @@ void fdf_model_set_battery(FdfModel *m, int percent, bool charging) {
                  lvl);
 }
 
+// Heart-rate scene (2026-08-19), all terrain like the battery:
+//
+//   rows  3-11  a medical-monitor ECG strip: 2-cell baseline, QRS spike,
+//               S-dip below the line, T-wave bump — scrolling left one full
+//               period per heartbeat
+//   rows 14-23  the BPM in the MM slot                                "72"
+//
+// The trace is a FOOTPRINT (2-cell strokes at one altitude), not a relief:
+// altitude cannot encode a value here, and one altitude keeps the outline as
+// clean as the digits. Its shape obeys the glyph rule — every feature moves
+// between columns orthogonally (the spike is a vertical bar, not a peak) —
+// so nothing corner-touches and floats.
+//
+// Placement is measured, not eyeballed (probe replayed offline across all 7
+// platforms, intersection of the visible bands): the full strip's tallest
+// row (spike top, row 3) is safe up to col 14, which is why the strip is
+// cols 1-14 — every scroll position of the spike stays on screen. Three
+// digits never fit one row anywhere in the band; at >=100 BPM the hundreds
+// digit takes the HH tens slot (cols 1-6 rows 1-10 — a position the time
+// itself proves every minute), and the strip keeps only its right half
+// (cols 8-14) beside it, one clear column away. The pair keeps the MM slot
+// in both variants.
+//
+// COLOUR IS ALTITUDE: the whole scene stands at the palette index the rate
+// maps to, 6 (calm) to 9 (racing) — the same vivid half of the ramp as the
+// battery, reading green -> yellow -> orange -> hot on most themes. No
+// reading yet (sensor warming up, or stale 0): a flatline and "--" digits —
+// the monitor idiom for "no signal". 1-bit stamps FDF_Z_TOP as always.
+#define ECG_COL0 1
+#define ECG_LEN 14
+#define ECG_COL0_SHORT 8
+#define ECG_LEN_SHORT 7
+#define ECG_BASE_TOP 8    // baseline rows 8-9
+#define ECG_BASE_BOT 9
+#define HEART_Z_CALM 6
+#define HEART_Z_RACING 9
+
+typedef struct { uint8_t top, bot; } EcgSpan;
+// One period of trace, column by column: baseline, R spike (up to row 3),
+// S dip (down to row 11), baseline, T bump (rows 6-7), baseline. Adjacent
+// features all share the baseline rows so the trace never corner-touches.
+static const EcgSpan ECG_FULL[ECG_LEN] = {
+  {8, 9}, {8, 9}, {8, 9}, {3, 9}, {3, 9}, {8, 11}, {8, 11},
+  {8, 9}, {6, 9}, {6, 9}, {8, 9}, {8, 9}, {8, 9}, {8, 9},
+};
+// The short strip drops the T wave — at 7 columns it would leave no flat
+// line at all, and the QRS alone still reads "monitor".
+static const EcgSpan ECG_SHORT[ECG_LEN_SHORT] = {
+  {8, 9}, {8, 9}, {3, 9}, {3, 9}, {8, 11}, {8, 11}, {8, 9},
+};
+
+// "--" for the warming-up monitor: same 3x5 grid as the digits.
+static const uint8_t DASH_GLYPH[DIGIT_FONT_ROWS] = {
+  0b000, 0b000, 0b111, 0b000, 0b000,
+};
+
+static uint8_t prv_heart_z(int bpm) {
+#if defined(PBL_COLOR)
+  if (bpm < 70) {
+    return HEART_Z_CALM;  // flatline included: calm colour for "no signal"
+  }
+  if (bpm < 90) {
+    return HEART_Z_CALM + 1;
+  }
+  if (bpm < 115) {
+    return HEART_Z_CALM + 2;
+  }
+  return HEART_Z_RACING;
+#else
+  (void)bpm;
+  return FDF_Z_TOP;  // mid altitudes draw nothing on 1-bit
+#endif
+}
+
+static void prv_stamp_heart(uint8_t z[FDF_ROWS][FDF_COLS], int bpm,
+                            uint16_t sweep16) {
+  uint8_t lvl = prv_heart_z(bpm);
+  const EcgSpan *pat = ECG_FULL;
+  int len = ECG_LEN;
+  int col0 = ECG_COL0;
+
+  if (bpm <= 0) {
+    // No reading: flatline plus "--" where the number would be.
+    const int dc0 = FDF_BLEED + BORDER + FDF_STAGGER;
+    const int dr0 = FDF_BLEED + BORDER + DIGIT_H + ROW_GAP;
+    prv_place_glyph(z, DASH_GLYPH, dc0, dr0, lvl);
+    prv_place_glyph(z, DASH_GLYPH, dc0 + DIGIT_W + DIGIT_GAP, dr0, lvl);
+    for (int i = 0; i < ECG_LEN; i++) {
+      for (int r = ECG_BASE_TOP; r <= ECG_BASE_BOT; r++) {
+        z[FDF_BLEED + r][FDF_BLEED + ECG_COL0 + i] = lvl;
+      }
+    }
+    return;
+  }
+
+  int shown = bpm > 249 ? 249 : bpm;  // three digits is all the band holds
+  if (shown >= 100) {
+    prv_place_glyph(z, DIGIT_FONT[shown / 100], FDF_BLEED + BORDER,
+                    FDF_BLEED + BORDER, lvl);
+    pat = ECG_SHORT;
+    len = ECG_LEN_SHORT;
+    col0 = ECG_COL0_SHORT;
+  }
+  prv_place_pair(z, shown % 100, FDF_STAGGER, BORDER + DIGIT_H + ROW_GAP, lvl);
+
+  // The pattern scrolls LEFT (monitor paper feed): one full period per
+  // heartbeat, so the spike crosses the strip at the wearer's own rate.
+  int offset = (sweep16 * len) >> 16;
+  for (int i = 0; i < len; i++) {
+    const EcgSpan *s = &pat[(i + offset) % len];
+    for (int r = s->top; r <= s->bot; r++) {
+      z[FDF_BLEED + r][FDF_BLEED + col0 + i] = lvl;
+    }
+  }
+}
+
+// The sweep phase at which the QRS spike enters the strip's RIGHT edge —
+// the instant a beat should land when the trace is locked to the real
+// heartbeat (paper feeds left, so a beat draws its spike in at the right).
+// Depends on the layout: the >=100 BPM strip is shorter and its spike sits
+// at a different pattern index, so the caller must pass the same bpm it
+// stamps with.
+uint16_t fdf_heart_beat_phase(int bpm) {
+  int len = bpm >= 100 ? ECG_LEN_SHORT : ECG_LEN;
+  int spike = bpm >= 100 ? 2 : 3;  // first spike column in the pattern
+  // Cell len-1 shows pat[(len - 1 + offset) % len]; solve for the offset
+  // that puts the spike there.
+  int offset = ((spike - (len - 1)) % len + len) % len;
+  // Aim at the MIDDLE of that offset's phase bucket: the stamp truncates
+  // (sweep16 * len) >> 16, so the bucket's lower edge rounds back to
+  // offset - 1 and the lock would sit one cell early.
+  return (uint16_t)((((int32_t)offset << 16) + 32768) / len);
+}
+
+void fdf_model_set_heart(FdfModel *m, int bpm, uint16_t sweep16) {
+  prv_snapshot_current(m);
+  prv_stamp_heart(m->z_to, bpm, sweep16);
+}
+
+void fdf_model_heart_frame(FdfModel *m, int bpm, uint16_t sweep16) {
+  // Frame update for the scroll: rewrite z_to only — if the entry morph is
+  // still playing the trace simply moves while it rises.
+  memset(m->z_to, 0, sizeof(m->z_to));
+  prv_stamp_heart(m->z_to, bpm, sweep16);
+}
+
 void fdf_model_set_seconds(FdfModel *m, int seconds) {
   prv_snapshot_current(m);
   prv_place_pair(m->z_to, seconds, FDF_STAGGER / 2, (INNER_ROWS - DIGIT_H) / 2,

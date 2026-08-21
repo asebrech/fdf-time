@@ -74,6 +74,17 @@ void fdf_model_set_seconds(FdfModel *m, int seconds);
 // not fit a pair box. Uses both digit slots, so it needs the classic framing
 // like the other full-region scenes.
 void fdf_model_set_battery(FdfModel *m, int percent, bool charging);
+// Heart-rate scene: a scrolling medical-monitor ECG strip above the BPM in
+// the MM slot (hundreds digit in the HH tens slot at >=100), tinted by rate
+// through the palette. bpm <= 0 draws a flatline and "--". sweep16 is the
+// beat phase (0..65535 = one period of the trace). set_ morphs in (snapshot
+// first); heart_frame only rewrites the destination for the scroll.
+void fdf_model_set_heart(FdfModel *m, int bpm, uint16_t sweep16);
+void fdf_model_heart_frame(FdfModel *m, int bpm, uint16_t sweep16);
+// The sweep phase at which the spike enters the strip's right edge — the
+// lock target when the trace follows real beats. Layout-dependent, so pass
+// the bpm the scene is stamping with.
+uint16_t fdf_heart_beat_phase(int bpm);
 void fdf_model_set_mode(FdfModel *m, bool seconds_mode);
 // The active theme's plateau-top ("text") color; White on 1-bit.
 GColor fdf_top_color(void);
