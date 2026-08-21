@@ -399,6 +399,24 @@ void fdf_model_set_splash(FdfModel *m, int style) {
   }
 }
 
+// Built-in starter drawing: the alien head, the same glyph the phone-side
+// editor pre-stamps. It exists because the editor's copy only reaches the
+// watch on SAVE — without this, someone who installs from the store and
+// never opens the settings gets the "42" fallback where their drawing
+// should be, i.e. a feature that looks broken. Produced by the project's
+// own rasterizer and checked against the renderer's rules before being
+// frozen here: one connected component, no corner-only links, no sub-2-cell
+// features. Same row-bitmask convention as the splashes.
+const uint32_t FDF_DEFAULT_DRAWING[FDF_CUSTOM_ROWS] = {
+  0x000000, 0x003f00, 0x00ffc0, 0x03fff0,
+  0x07fff8, 0x0ffffc, 0x0ffffc, 0x1ffffe,
+  0x1ffffe, 0x387f87, 0x303f03, 0x301e03,
+  0x181e06, 0x180c06, 0x1c0c0e, 0x0e3f1c,
+  0x07fff8, 0x07def8, 0x03c0f0, 0x01f3e0,
+  0x00ffc0, 0x007f80, 0x003f00, 0x000c00,
+  0x000000,
+};
+
 // The editor grid is exactly the inner region; if these ever diverge the
 // stamp would decenter, so fail the build instead.
 typedef char fdf_custom_dims_check[(FDF_CUSTOM_COLS == INNER_COLS &&

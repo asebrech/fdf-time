@@ -51,22 +51,12 @@ module.exports = [
       },
       {
         "type": "select",
-        "messageKey": "Mode",
-        "defaultValue": "0",
-        "label": "Display mode",
-        "options": [
-          { "label": "Classic (HH:MM terrain)", "value": "0" },
-          { "label": "Seconds (SS terrain)", "value": "1" }
-        ]
-      },
-      {
-        "type": "select",
         "messageKey": "WaveMode",
-        "defaultValue": "3",
+        "defaultValue": "4",
         "label": "Ocean animation",
         "options": [
-          { "label": "Silk (ultra-fluid)", "value": "3" },
           { "label": "Pulse (beats with your heart)", "value": "4" },
+          { "label": "Silk (ultra-fluid)", "value": "3" },
           { "label": "Fluid (updates every second)", "value": "0" },
           { "label": "Eco (drifts once a minute)", "value": "1" },
           { "label": "Frozen", "value": "2" }
@@ -88,38 +78,34 @@ module.exports = [
         "type": "pixelGrid",
         "messageKey": "CustomMap",
         "label": "Your drawing",
-        "defaultValue": ""
+        "defaultValue": "000000003f0000ffc003fff007fff80ffffc0ffffc1ffffe1ffffe387f87303f03301e03181e06180c061c0c0e0e3f1c07fff807def803c0f001f3e000ffc0007f80003f00000c00000000"
       },
       {
         "type": "select",
         "messageKey": "Splash42",
-        "defaultValue": "6",
+        "defaultValue": "5",
         "label": "Splash on launch",
         "options": [
-          { "label": "\"42\"", "value": "1" },
           { "label": "My drawing", "value": "5" },
+          { "label": "Orbit spin", "value": "7" },
           { "label": "Today's date", "value": "6" },
           { "label": "Battery", "value": "8" },
           { "label": "Heart rate", "value": "9" },
-          { "label": "NixOS", "value": "2" },
-          { "label": "Orbit spin", "value": "7" },
           { "label": "Off", "value": "0" }
         ]
       },
       {
         "type": "select",
         "messageKey": "ShakeOrbit",
-        "defaultValue": "9",
+        "defaultValue": "1",
         "label": "Shake gesture",
         "options": [
-          { "label": "\"42\"", "value": "6" },
+          { "label": "Orbit spin", "value": "1" },
           { "label": "My drawing", "value": "5" },
-          { "label": "Today's date", "value": "4" },
           { "label": "Seconds", "value": "2" },
+          { "label": "Today's date", "value": "4" },
           { "label": "Battery", "value": "9" },
           { "label": "Heart rate", "value": "10" },
-          { "label": "NixOS", "value": "7" },
-          { "label": "Orbit spin", "value": "1" },
           { "label": "Off", "value": "0" }
         ]
       },
@@ -133,7 +119,7 @@ module.exports = [
         "type": "toggle",
         "messageKey": "WakeFirst",
         "label": "First shake only wakes the screen",
-        "defaultValue": true
+        "defaultValue": false
       },
       {
         "type": "toggle",

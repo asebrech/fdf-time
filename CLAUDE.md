@@ -381,7 +381,17 @@ Run with the pebble-tool venv python inside the FHS env
   (side-by-side controls got crushed on phones). Undo/redo buttons keep a
   60-entry history, one entry per finished gesture (a whole drag stroke,
   a stamp, a clear — not per cell). With no saved drawing yet the grid
-  opens prefilled with a stamped 👽 (reaches the watch only on Save).
+  opens prefilled with a stamped 👽, and the WATCH carries its own frozen
+  copy of the same alien in FDF_DEFAULT_DRAWING (fdf.c), seeded into
+  s_custom at load when CUSTOM_KEY holds nothing. Both halves are needed:
+  the editor copy only reaches the watch on Save, so without the baked-in
+  table a store user who never opens the settings gets the "42" fallback
+  where their drawing should be — the feature looks broken on a fresh
+  install, which is exactly what the user objected to on 2026-08-21. The
+  table was produced by the project's own rasterizer and checked against
+  the renderer's rules (one component, no corner-only links, no sub-2-cell
+  features) before being frozen. It is NOT persisted, so saving overwrites
+  it and deliberately clearing the grid still leaves an empty drawing.
   Headless JS testing without Chrome: pypkjs's STPyV8 runs the component
   fine — eval the module with a stub DOM/canvas (see the session's
   test_raster.py pattern: fake measureText/fillText/getImageData drawing
@@ -442,17 +452,34 @@ Run with the pebble-tool venv python inside the FHS env
   superseded by the user drawing — but the watch still renders those
   persisted values so store users who had picked it keep it; don't
   reuse the numbers. NixOS was pulled the same day and immediately
-  reinstated on user request ("laisse nixos") — it stays. The sticky
+  reinstated on user request ("laisse nixos"), then REMOVED AGAIN on
+  2026-08-21 along with the "42" and the whole Display-mode select (user:
+  "on va supprimer des options"). Same treatment as the Pebble logo: gone
+  from the Clay UI, still RENDERED by the watch for anyone holding those
+  persisted values, and the numbers stay burnt (splash 1/2, shake 6/7).
+  Note "42" remains set_splash's DEFAULT case, so any unknown value still
+  lands on it — that fallback is what makes removing UI entries safe.
+  Display mode is the delicate one: `Mode` is gone from the page but
+  `display_mode` still works on the watch, so a user already in seconds
+  mode STAYS there with no way back short of the shake's "Seconds" peek.
+  That was the deliberate choice over silently forcing everyone to classic;
+  revisit if anyone complains. The sticky
   seconds toggle (shake 3) was also dropped from the UI on 2026-08-16
   ("on simplifie" — this supersedes the earlier "don't remove" note,
   which was about removing the FEATURE; the watch code and persisted
   value still work). LABELS ARE SHARED BY BOTH SELECTS (2026-08-17 user
   request, supersedes the earlier "Show the seconds" wording): the same
-  scene has the same name and the same position in the splash select and
-  the shake select — "42" / My drawing / Today's date / Battery / NixOS /
-  Orbit spin / Off, no "Show…" prefixes; the shake list is that list with
-  "Seconds" inserted after the date (it is the one scene the splash cannot
-  offer). Only the persisted VALUES differ between the two sides, and they
+  scene has the same name in both selects — My drawing / Today's date /
+  Battery / Heart rate / Orbit spin / Off, no "Show…" prefixes; the shake
+  list is that list with "Seconds" inserted after My drawing (it is the one
+  scene the splash cannot offer). The same-POSITION half of that rule no
+  longer holds (2026-08-21): the splash list runs My drawing / Orbit spin /
+  date / battery / heart / off, the shake list leads with Orbit spin and
+  slots Seconds third. Names still match, which is what the 2026-08-17
+  request was really about. THE ORDER IS THE USER'S TASTE, set by hand and
+  adjusted several times — do not "restore" alignment between the two
+  lists, and do not reorder to match the defaults either.
+  ("42" and NixOS left both lists the same day; their values stay burnt.) Only the persisted VALUES differ between the two sides, and they
   must never be renumbered.
   Low-battery alert (2026-08-17, `low_batt` / Clay `LowBatt`, default on;
   thresholds revised 2026-08-21): the SAME scene 9 raises itself when the
@@ -553,7 +580,9 @@ Run with the pebble-tool venv python inside the FHS env
   kick the terrain. Test in QEMU: `pebble emu-accel gravity+x` while a
   sendkey-left keepalive holds the backlight (and thus the timer) alive.
 - `src/pkjs/` — phone-side JS: `config.js` is the Clay settings page
-  (theme, wave mode, gradient on/off, splash, shake orbit, BT vibe),
+  (theme, wave mode, gradient on/off, splash, shake orbit, BT vibe; the
+  Display-mode select and the "42"/NixOS scene entries were removed
+  2026-08-21 — see the persisted-value note below),
   `index.js` just instantiates Clay. Settings arrive in `main.c` via
   AppMessage (`prv_inbox_received` — Clay sends select values as STRINGS,
   toggles as ints; `prv_tuple_int` handles both), persist under

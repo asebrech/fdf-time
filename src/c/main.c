@@ -1072,20 +1072,29 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
 
 static void prv_load_settings(void) {
   s_settings = (Settings) {
-    // Defaults revised 2026-08-17 (user's call). They only apply to a FRESH
-    // install: any watch with a persisted blob keeps what it had.
+    // Defaults revised 2026-08-17 and again 2026-08-21 (user's call). They
+    // only apply to a FRESH install: any watch with a persisted blob keeps
+    // what it had, which is also why removing an option from the Clay page
+    // never changes a current user's behaviour.
     .theme = 1,         // Catppuccin
-    .wave_mode = 3,     // silk
+    .wave_mode = 4,     // pulse — the swell breathes at the wearer's heart
+                        // rate. Safe as a default everywhere: with no
+                        // sensor, no reading or health off it paces like a
+                        // calm 60, i.e. exactly silk, and it never opens a
+                        // sensor request of its own.
     .gradient = 1,
     .display_mode = 0,  // classic HH/MM terrain
-    .splash_style = 6,  // today's date
-    .shake_action = 9,  // the battery scene
+    .splash_style = 5,  // the user's own drawing (falls back to the "42"
+                        // until one is saved — set_splash's default case)
+    .shake_action = 1,  // orbit spin
     .bt_vibe = false,
     .wave_rest = 1,
     .time_format = 0,   // follow the watch's 12/24h setting
     .show_ampm = 1,
-    .wake_first = 1,    // a jolt on a sleeping watch wakes it, it does not
-                        // fire the gesture
+    .wake_first = 0,    // off (user's call, 2026-08-21): the default shake
+                        // action is the orbit again, which is harmless and
+                        // rather pleasant on the waking jolt itself, so
+                        // there is nothing to protect the user from
     .low_batt = 1,      // announce 12% and 8% by itself
   };
   if (persist_exists(SETTINGS_KEY)) {
@@ -1094,6 +1103,15 @@ static void prv_load_settings(void) {
   if (persist_exists(CUSTOM_KEY)) {
     s_has_custom = persist_read_data(CUSTOM_KEY, s_custom, sizeof(s_custom)) ==
                    (int)sizeof(s_custom);
+  }
+  if (!s_has_custom) {
+    // Nobody has drawn anything yet: seed the built-in alien so the drawing
+    // consumers (splash 5, shake 5) show a real scene on a fresh install
+    // instead of falling back to the "42" / the orbit. It is NOT persisted —
+    // saving from the phone overwrites it, and clearing the grid there
+    // deliberately leaves an empty drawing.
+    memcpy(s_custom, FDF_DEFAULT_DRAWING, sizeof(s_custom));
+    s_has_custom = true;
   }
   if (persist_exists(BATT_KEY)) {
     s_batt_warned = persist_read_int(BATT_KEY);

@@ -62,6 +62,10 @@ void fdf_model_set_time(FdfModel *m, int hours, int minutes);
 // slashed-e (3 was Arch, removed; unknown values fall back to "42").
 // Values are persisted in settings — never renumber after a store release.
 void fdf_model_set_splash(FdfModel *m, int style);
+// Built-in starter drawing (the alien head) seeded when the user has never
+// saved one, so a fresh install shows a real scene rather than the "42"
+// fallback. Same convention as the splashes.
+extern const uint32_t FDF_DEFAULT_DRAWING[FDF_CUSTOM_ROWS];
 // User-drawn splash (style 5): rows use the same convention as the built-in
 // splashes — bit (1 << col) set = plateau cell, col 0 leftmost.
 void fdf_model_set_custom(FdfModel *m, const uint32_t rows[FDF_CUSTOM_ROWS]);
