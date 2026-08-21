@@ -296,6 +296,35 @@ Run with the pebble-tool venv python inside the FHS env
   catches a transcription slip in a port. And check the Clay closure trap
   mechanically: `String(component.initialize)` must contain every helper's
   definition, since toSource() drops the module scope.
+  MEASURED AND REJECTED, do not re-implement without new evidence
+  (2026-08-21, full literature review + ablation on the 16-glyph battery
+  and a 6-item text battery): (a) GRID-FITTING the ink box to whole cells
+  (font hinting's core move) — introduced 4 thin cells on text and an extra
+  component on emoji; (b) SSIM-OPTIMAL CONTRAST RESTORATION (Öztireli &
+  Gross, SIGGRAPH 2015 — closed-form adaptive unsharp mask, gain
+  sqrt(Sh/Sl), needs a per-cell sum of SQUARED alpha) — introduced a thin
+  cell, tone got worse; (c) HYSTERESIS / dual thresholding (Canny's rule,
+  = TrueType's dropout control) and INK-CONSERVATION thresholding (fill
+  exactly round(Σcov) cells) — tone got worse. All three are theoretically
+  sound and target real pathologies, but repairThin already captures the
+  same benefit by a different route, so they only add fill. The ablation
+  numbers: shipped v2 diag=0 thin=0 extra=2 tone=0.1552, best rival
+  tone=0.1565 with extra=3. Also learned: a pure TONE metric (blurred RMS
+  vs the coverage map) is NOT a quality proxy here — it rewarded the old
+  pepper-noise output and mostly tracks sub-cell position. Score hard
+  constraint violations first, tone only as a tiebreak.
+  The ceiling is the resolution, not the algorithm: the icon-design
+  literature is unanimous that 16x16-class icons are REDRAWN, never
+  resampled, so the stamp-then-hand-edit architecture is already the right
+  answer and the goal is only to cut how many edits a glyph needs.
+  Formal names for this project's two rules, if more theory is ever needed:
+  the corner-touch constraint is WELL-COMPOSEDNESS (Latecki, Eckhardt &
+  Rosenfeld, CVIU 1995 — a set is well-composed iff no 2x2 block has one
+  diagonal filled and the other empty, and then 4- and 8-connectivity
+  coincide); welding is the correct repair direction because it is monotone
+  and terminating. Careful: welding also closes diagonal BACKGROUND
+  channels — the NixOS-lambda lesson inverted — which is why the carve runs
+  BEFORE the weld loop here.
   Editor UX: the component folds behind a settings-row header (label +
   live pixel thumbnail + chevron), everything inside stacked full-width
   (side-by-side controls got crushed on phones). Undo/redo buttons keep a
