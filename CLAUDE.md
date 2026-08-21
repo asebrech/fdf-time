@@ -26,6 +26,17 @@ otherwise prefix with `devenv shell --`).
 There are no unit tests; verification = `pebble build` succeeds + visual check
 via emulator screenshot.
 
+ALWAYS PUSH TO THE USER'S WATCH after changing watch-facing code (user's
+call, 2026-08-21: "a chaque fois il faut que tu penses pousser sur ma
+montre"). `pebble install --phone` is the last step of the loop, not
+something to offer — the user tests on the real watch, and an emulator
+screenshot is never the end of the job. Do it unprompted once the build
+succeeds, and say so. Note the contrast with committing, which needs
+explicit authorization every time: installing is reversible and local, a
+commit is a record. Only ONE Dev Connect session at a time, so kill any
+running `pebble logs --phone` first; the install takes a few minutes and
+may need backgrounding.
+
 ## Store visual pipeline (tools/)
 
 Run with the pebble-tool venv python inside the FHS env
@@ -90,13 +101,21 @@ Run with the pebble-tool venv python inside the FHS env
 
 ## Versioning policy (agreed with the user, 2026-08-13; loosened 2026-08-21)
 
-- COMMITS ARE FREE AND DECOUPLED FROM VERSIONS (user's call, 2026-08-21:
-  "c'est un peu chiant qu'à chaque fois qu'on veut commit on fait une poussée
-  de version"). Commit whenever work is worth recording — mid-feature,
-  unvalidated, debug logs still in — with a plain descriptive subject and NO
-  version prefix. Several commits per release is the normal shape. Do not
-  touch package.json's version, do not tag, and do not push to any store
-  just because something was committed.
+- NEVER COMMIT WITHOUT THE USER'S EXPLICIT GO-AHEAD (user's call,
+  2026-08-21: "attends mon autorisation avant de commit"). Finishing a piece
+  of work, validating it, or being asked to "record"/"note" something is NOT
+  authorization. Do the work, say it is ready to commit, and WAIT. One
+  approval covers ONE commit — it does not carry over, and an earlier
+  "vas-y, commit" never licenses a later one. Applies to `git commit` in
+  every form, amends included. Staging and showing a diff unasked is fine;
+  creating the commit is not.
+- COMMITS ARE DECOUPLED FROM VERSIONS (user's call, 2026-08-21: "c'est un
+  peu chiant qu'à chaque fois qu'on veut commit on fait une poussée de
+  version"). Once authorized, a commit can record work at any state —
+  mid-feature, unvalidated, debug logs still in — with a plain descriptive
+  subject and NO version prefix. Several commits per release is the normal
+  shape. Do not touch package.json's version, do not tag, and do not push
+  to any store just because something was committed.
 - A RELEASE is a separate, deliberate act, and only then: bump
   package.json + tag vX.Y.Z, and push that same number to BOTH stores
   (rePebble release API + Rebble dev-portal release). Only watch-code
@@ -256,10 +275,9 @@ Run with the pebble-tool venv python inside the FHS env
   downsample-fine-art problem that made the logo splashes painful — plus a
   "Stamp" field that rasterizes any emoji/short text the phone can render
   — REWRITTEN 2026-08-21 ("améliorer au maximum cette partie"), pipeline now:
-  (1) 8× supersample → per-cell coverage+luminance; (2) OTSU threshold over
-  the INKED cells only (background would drag the split down and bloat every
-  silhouette), clamped to [0.30, 0.60] — replaces a hardcoded 0.45 that ate
-  light glyphs and bloated heavy ones; (3) left-right symmetry snap;
+  (1) 8× supersample → per-cell coverage+luminance; (2) FIXED 0.45 coverage
+  threshold — an Otsu version shipped briefly on 2026-08-21 and was REVERTED
+  the same day, see the threshold warning below; (3) left-right symmetry snap;
   (4) detail carve BY REGION — dark-on-bright (eyes/mouths, body median
   L>90 and cell <0.55×) and the mirror bright-on-dark case (>median+80,
   self-guarding: unreachable on a bright body, so 🆘/boxed arrows/🎱 come
@@ -285,8 +303,15 @@ Run with the pebble-tool venv python inside the FHS env
   off-center in its advance — a sub-cell offset flips edge columns), and a
   left-right symmetry snap (mirror-averaged coverage) that engages only
   when <15% of mirrored silhouette pairs mismatch — asymmetric glyphs
-  (letters, 🌙, hands) are untouched, and only the silhouette is snapped,
-  never the carve (a 😉 keeps its wink). Validated on a glyph battery:
+  (letters, 🌙, hands) are untouched. The CARVE is mirrored too (added
+  2026-08-21, user: the alien "n'est pas absolument parfait"), but behind a
+  DOUBLE guard: the silhouette must have snapped AND the carve's own
+  mirrored pairs must disagree on <=30%. Union, not average — an eye found
+  on one side only is carved on both. Measured: 👽 7 asymmetric cells -> 0,
+  😎 6 -> 0, 🙂 1 -> 0, every other glyph bit-identical, no new thin cells
+  / floating blocks / components. The wink is safe because 😉's carve
+  disagrees on 40% of pairs, well outside the bound — that 30% number is
+  the whole reason a wink survives, so do not raise it. Validated on a glyph battery:
   bold shapes (🙂❤️⭐, letters) come out great, detailed ones (🌍👌)
   blob — acceptable because the user sees and hand-edits.
   Headless JS verification (waf does NOT parse JS): `node --check` for
@@ -296,6 +321,21 @@ Run with the pebble-tool venv python inside the FHS env
   catches a transcription slip in a port. And check the Clay closure trap
   mechanically: `String(component.initialize)` must contain every helper's
   definition, since toSource() drops the module scope.
+  NEVER LET THE THRESHOLD RISE ABOVE 0.45 (learned the hard way,
+  2026-08-21: the user stamped 👾 and it came apart). Otsu lands at
+  0.62-0.68 on this kind of coverage map, always ABOVE the tuned constant,
+  because its documented class-imbalance drift thins a sparse glyph further.
+  At 0.60 the space invader lost its antennae and shattered into SEVEN
+  components; across a 20-glyph battery, surplus components went 2 -> 8.
+  The asymmetry is the whole point: under-filling is FATAL here (thin limbs
+  detach, shapes disconnect) while over-filling is merely a little heavy. If
+  an adaptive rule is ever tried again it must be capped at 0.45, and the
+  battery MUST include sparse thin-limbed glyphs (invader, alien, victory
+  hand, bone) — the original 16-glyph battery had none, which is exactly why
+  the regression measured clean and shipped. Ink-conservation (fill
+  round(sum cov) cells, lands at 0.49-0.55) and hysteresis were measured on
+  the widened battery too: both keep components at 2 but leave 6 thin cells
+  where the fixed cut leaves 0. The constant wins.
   MEASURED AND REJECTED, do not re-implement without new evidence
   (2026-08-21, full literature review + ablation on the 16-glyph battery
   and a 6-item text battery): (a) GRID-FITTING the ink box to whole cells
@@ -330,7 +370,7 @@ Run with the pebble-tool venv python inside the FHS env
   (side-by-side controls got crushed on phones). Undo/redo buttons keep a
   60-entry history, one entry per finished gesture (a whole drag stroke,
   a stamp, a clear — not per cell). With no saved drawing yet the grid
-  opens prefilled with a stamped 😎 (reaches the watch only on Save).
+  opens prefilled with a stamped 👽 (reaches the watch only on Save).
   Headless JS testing without Chrome: pypkjs's STPyV8 runs the component
   fine — eval the module with a stub DOM/canvas (see the session's
   test_raster.py pattern: fake measureText/fillText/getImageData drawing
@@ -403,9 +443,9 @@ Run with the pebble-tool venv python inside the FHS env
   "Seconds" inserted after the date (it is the one scene the splash cannot
   offer). Only the persisted VALUES differ between the two sides, and they
   must never be renumbered.
-  Low-battery alert (2026-08-17, `low_batt` / Clay `LowBatt`, default on):
-  the SAME scene 9 raises itself when the charge first crosses under 20%,
-  then under 10% — whatever the shake is set to. Only the CROSSING alerts,
+  Low-battery alert (2026-08-17, `low_batt` / Clay `LowBatt`, default on;
+  thresholds revised 2026-08-21): the SAME scene 9 raises itself when the
+  charge first crosses under 12%, then under 8% — whatever the shake is set to. Only the CROSSING alerts,
   once per step: the lowest threshold announced is persisted under
   `BATT_KEY 4` (a watchface relaunches every time the user leaves an app,
   so an unpersisted latch would replay the alert constantly) and rearms
@@ -415,7 +455,18 @@ Run with the pebble-tool venv python inside the FHS env
   the watch is already low at launch, the gauge takes the splash slot
   instead of interrupting a moment later. Deliberately NO vibration: the
   firmware pushes its own low-battery notification, a second buzz would
-  double up. Buttons are as impossible as touch on watchfaces:
+  double up. THRESHOLDS ARE THE FIRMWARE'S, not invented: PebbleOS warns
+  twice and by DEFAULT NOT IN PERCENT — `s_warning_points[] = {18, 12}` in
+  shell/normal/battery_ui_fsm.c are HOURS REMAINING, mapped through the
+  board's discharge curve (Kconfig: "A value of 0 uses the default
+  time-based threshold of 18 hours remaining"), and getafix is the one board
+  that pins percentages, at 12/8. We ship 12/8 for that reason. The original
+  20/10 fired a full day of charge early on a ~5-day watch, i.e. BEFORE the
+  firmware's own warning, which read as a duplicate in the wrong order.
+  Don't confuse any of this with BOARD_CONFIG_POWER.low_power_threshold
+  (2-5% per board) — that one triggers standby, not a warning. The persisted
+  BATT_KEY ladder migrates gracefully across the change: a watch holding the
+  old 20 simply re-alerts at 12, and one holding 10 skips straight to 8. Buttons are as impossible as touch on watchfaces:
   the kernel's shell/normal/watchface.c owns the ClickManager
   (launcher, timeline, quick-launch) — a watchface never sees clicks.
   Tap handling: events within 1.2 s are one physical shake (burst

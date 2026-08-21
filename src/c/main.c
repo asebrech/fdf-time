@@ -61,7 +61,7 @@ typedef struct {
                         // the firmware-bug note near CAN_REST_WAVES);
                         // byte kept so persisted blobs keep their layout
   uint8_t low_batt;     // show the battery scene by itself when the charge
-                        // first drops under 20% and again under 10%
+                        // first drops under 12% and again under 8%
                         // (independent of shake_action 9). Appended: older
                         // persisted blobs keep their meaning.
 } Settings;
@@ -121,8 +121,22 @@ static AppTimer *s_view_timer;
 // s_batt_pending until the backlight comes on (or the splash finishes).
 static uint8_t s_batt_warned;
 static bool s_batt_pending;
-#define BATT_WARN_HIGH 20
-#define BATT_WARN_LOW 10
+// Thresholds aligned on PebbleOS's own (2026-08-21). The firmware warns
+// twice, and by default NOT at a percentage: s_warning_points[] = {18, 12}
+// in shell/normal/battery_ui_fsm.c are HOURS REMAINING, converted through
+// the board's discharge curve (Kconfig: "A value of 0 uses the default
+// time-based threshold of 18 hours remaining"). The only board that pins
+// percentages is getafix, at 12 and 8 — those are the house numbers, so
+// they are what we use. 20% was roughly a DAY of charge left on a watch
+// that runs ~5 days: the alert fired well before the firmware's own and
+// read as a duplicate in the wrong order. Note the firmware also suppresses
+// its first warning when the second is under 3 hours away
+// (BATTERY_WARNING_MIN_HOURS_HEADROOM); our two steps are far enough apart
+// in percent terms that the equivalent problem does not arise.
+// Do NOT confuse these with BOARD_CONFIG_POWER.low_power_threshold (2-5%),
+// which triggers standby, not a warning.
+#define BATT_WARN_HIGH 12
+#define BATT_WARN_LOW 8
 // Date splash (splash_style 6): the weekday+month overlay must draw while
 // the splash holds, outside any peek state.
 static bool s_splash_overlay;
@@ -694,7 +708,8 @@ static void prv_batt_alert(void) {
 
 // Claim the threshold the current charge falls under, if it hasn't been
 // announced yet — returns true (and marks it announced, persistently) exactly
-// once per step down. Plugging in or recovering above 20% rearms the ladder.
+// once per step down. Plugging in or recovering above the high threshold
+// rearms the ladder.
 static bool prv_batt_claim_alert(void) {
   if (!s_settings.low_batt) {
     return false;
@@ -1071,7 +1086,7 @@ static void prv_load_settings(void) {
     .show_ampm = 1,
     .wake_first = 1,    // a jolt on a sleeping watch wakes it, it does not
                         // fire the gesture
-    .low_batt = 1,      // announce 20% and 10% by itself
+    .low_batt = 1,      // announce 12% and 8% by itself
   };
   if (persist_exists(SETTINGS_KEY)) {
     persist_read_data(SETTINGS_KEY, &s_settings, sizeof(s_settings));

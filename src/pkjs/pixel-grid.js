@@ -36,7 +36,7 @@ module.exports = {
           '<button type="button" class="pg-redo">&#8631; Redo</button>' +
         '</div>' +
         '<input class="pg-glyph" type="text"' +
-          ' placeholder="😎 Or type an emoji / short text…">' +
+          ' placeholder="👽 Or type an emoji / short text…">' +
         '<button type="button" class="pg-stamp">Stamp it</button>' +
         '<button type="button" class="pg-clear">Clear</button>' +
       '</div>' +
@@ -212,39 +212,6 @@ module.exports = {
      * All of these must stay INSIDE initialize(): Clay serializes the
      * component with toSource() and a module-level helper would compile
      * fine here and die on the config page with a ReferenceError. */
-
-    /* Otsu 1979: pick the threshold that maximizes between-class variance.
-     * Replaces a hardcoded coverage cut, which was either eating light
-     * glyphs or bloating heavy ones. */
-    function otsuThreshold(values) {
-      var BINS = 64, i;
-      if (!values.length) { return 0.45; }
-      var lo = values[0], hi = values[0];
-      for (i = 1; i < values.length; i++) {
-        if (values[i] < lo) { lo = values[i]; }
-        if (values[i] > hi) { hi = values[i]; }
-      }
-      if (hi - lo < 1e-6) { return (lo + hi) / 2; }
-      var hist = [];
-      for (i = 0; i < BINS; i++) { hist.push(0); }
-      for (i = 0; i < values.length; i++) {
-        hist[Math.floor((values[i] - lo) / (hi - lo) * (BINS - 1))]++;
-      }
-      var total = values.length, sumAll = 0;
-      for (i = 0; i < BINS; i++) { sumAll += (i + 0.5) * hist[i]; }
-      var w0 = 0, sum0 = 0, bestVar = -1, bestB = BINS >> 1;
-      for (i = 0; i < BINS; i++) {
-        w0 += hist[i];
-        if (!w0) { continue; }
-        var w1 = total - w0;
-        if (!w1) { break; }
-        sum0 += (i + 0.5) * hist[i];
-        var d = sum0 / w0 - (sumAll - sum0) / w1;
-        var v = w0 * w1 * d * d;
-        if (v > bestVar) { bestVar = v; bestB = i; }
-      }
-      return lo + (bestB + 1) / BINS * (hi - lo);
-    }
 
     /* 4-connected components of cells equal to `val`. 4-connected, not 8:
      * the watch draws an edge only between ADJACENT vertices, so corner
@@ -461,16 +428,17 @@ module.exports = {
           lum[r][c] = lN ? lSum / lN : 255;
         }
       }
-      // Otsu over the inked cells only (the empty background would drag the
-      // split down and bloat every silhouette), clamped so a very light or
-      // very heavy glyph can't run away with the outline.
-      var inked = [];
-      for (r = 0; r < ROWS; r++) {
-        for (c = 0; c < COLS; c++) {
-          if (cov[r][c] > 0.02) { inked.push(cov[r][c]); }
-        }
-      }
-      var thr = Math.max(0.30, Math.min(0.60, otsuThreshold(inked)));
+      // Fixed coverage cut, tuned on a glyph battery. AUTOMATIC THRESHOLDS
+      // WERE TRIED AND REVERTED (2026-08-21, user hit it on 👾): Otsu picks
+      // 0.62-0.68 on this kind of coverage map — always above 0.45 — because
+      // its class-imbalance drift thins a sparse glyph further. That erodes
+      // thin limbs until they DETACH: the space invader lost its antennae
+      // and came apart into seven pieces. In this renderer under-filling is
+      // fatal (features vanish, shapes disconnect) while over-filling is
+      // merely a little heavy, so the threshold must never rise above the
+      // tuned value. Ink-conservation and hysteresis variants were measured
+      // too and neither beat this constant.
+      var thr = 0.45;
       var out = emptyGrid();
       for (r = 0; r < ROWS; r++) {
         for (c = 0; c < COLS; c++) {
@@ -481,9 +449,9 @@ module.exports = {
       // near-symmetric silhouette (faces, hearts), edge columns hover
       // around the fill threshold and antialiasing flips one side only.
       // Averaging mirrored coverages makes the outline exactly symmetric.
-      // Clearly asymmetric glyphs (letters, moons, hands) are left alone —
-      // and only the SILHOUETTE is snapped, never the dark-detail carve,
-      // so a wink 😉 keeps its one closed eye.
+      // Clearly asymmetric glyphs (letters, moons, hands) are left alone.
+      // The carve gets the SAME treatment further down, behind its own
+      // second test — see the carve-symmetry block.
       var pairs = 0, mism = 0;
       for (r = 0; r < ROWS; r++) {
         for (c = 0; c < (COLS >> 1); c++) {
@@ -493,7 +461,8 @@ module.exports = {
           }
         }
       }
-      if (pairs && mism / pairs <= 0.15) {
+      var snapped = pairs && mism / pairs <= 0.15;
+      if (snapped) {
         for (r = 0; r < ROWS; r++) {
           for (c = 0; c < (COLS >> 1); c++) {
             var v2 = (cov[r][c] + cov[r][COLS - 1 - c]) / 2 >= thr ? 1 : 0;
@@ -527,6 +496,32 @@ module.exports = {
           else if (lum[r][c] > bodyL + 80) { carve[r][c] = 1; }
         }
       }
+      // Mirror the CARVE too, but only when the silhouette itself snapped
+      // AND the carve is already mostly symmetric (<=30% of mirrored pairs
+      // disagree). A symmetric face whose eyes come out lopsided is the
+      // most visible failure left — 👽 had 7 asymmetric cells, 😎 six — and
+      // this drives them to zero. The double guard is what protects a wink:
+      // 😉's carve disagrees on 40% of its pairs, well clear of the bound,
+      // so its one closed eye survives untouched. Union, not average: an
+      // eye found on one side only should be carved on BOTH.
+      var cpairs = 0, cmism = 0;
+      for (r = 0; r < ROWS; r++) {
+        for (c = 0; c < (COLS >> 1); c++) {
+          if (carve[r][c] || carve[r][COLS - 1 - c]) {
+            cpairs++;
+            if (carve[r][c] !== carve[r][COLS - 1 - c]) { cmism++; }
+          }
+        }
+      }
+      if (snapped && cpairs && cmism / cpairs <= 0.30) {
+        for (r = 0; r < ROWS; r++) {
+          for (c = 0; c < (COLS >> 1); c++) {
+            var cv = (carve[r][c] || carve[r][COLS - 1 - c]) ? 1 : 0;
+            carve[r][c] = cv;
+            carve[r][COLS - 1 - c] = cv;
+          }
+        }
+      }
       var blobs = componentsOf(carve, 1);
       for (var bi = 0; bi < blobs.length; bi++) {
         if (blobs[bi].length < 3) { continue; }
@@ -551,9 +546,9 @@ module.exports = {
     var saved = typeof self._value === 'string' ? self._value : '';
     var grid = parse(saved);
     if (saved.length !== ROWS * 6) {
-      // Nothing ever saved: greet the user with a stamped 😎 instead of a
+      // Nothing ever saved: greet the user with a stamped 👽 instead of a
       // blank grid (it only reaches the watch if they hit Save).
-      var starter = rasterizeGlyph('😎');
+      var starter = rasterizeGlyph('👽');
       if (starter) { grid = starter; }
     }
 

@@ -125,7 +125,7 @@ module.exports = [
       {
         "type": "toggle",
         "messageKey": "LowBatt",
-        "label": "Battery alert under 20%",
+        "label": "Battery alert under 12%",
         "defaultValue": true
       },
       {
