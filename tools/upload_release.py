@@ -1,7 +1,13 @@
 """Upload a release to the Pebble appstore with full control over the
 screenshot set: replaceScreenshots=true wipes the previous set, and the
-multipart field order per platform is: boot GIF (42 -> time), orbit GIF,
-then a crisp static of the steady face."""
+multipart field order per platform IS the order the store shows them in.
+
+Order (2026-08-21): the drawing rising into the time, the minute rollover,
+the orbit, the heart-rate strip, then the theme cycle. Whatever is missing
+for a platform is skipped rather than faked — 1-bit boards have no themes
+and aplite has no health, so they ship a shorter set (aplite substitutes
+the battery scene). The old seconds clip and the static shot were dropped:
+in a list of still screenshots, every slot being animated is the point."""
 import os
 import sys
 import requests
@@ -19,18 +25,19 @@ gifs_dir = sys.argv[4]
 pbw = os.path.join(project, "build", "fdf-time.pbw")
 
 files_payload = [("pbwFile", ("fdf-time.pbw", open(pbw, "rb"), "application/octet-stream"))]
+ORDER = ["boot", "rollover", "orbit", "heart", "themes", "battery"]
 for p in PLATFORMS:
     field = "screenshots_" + p
-    for name, mime in (
-        (p + "_boot.gif", "image/gif"),
-        (p + "_rollover.gif", "image/gif"),
-        (p + "_orbit.gif", "image/gif"),
-        (p + "_seconds.gif", "image/gif"),
-        (p + "_steady.png", "image/png"),
-    ):
+    found = 0
+    for kind in ORDER:
+        name = "{}_{}.gif".format(p, kind)
         path = os.path.join(gifs_dir, name)
-        assert os.path.exists(path), "missing " + path
-        files_payload.append((field, (name, open(path, "rb"), mime)))
+        if not os.path.exists(path):
+            continue
+        files_payload.append((field, (name, open(path, "rb"), "image/gif")))
+        found += 1
+    assert found, "no screenshots at all for " + p
+    print("  {:8s} {} screenshots".format(p, found))
 
 tok = get_default_account().get_access_token()
 r = requests.post(

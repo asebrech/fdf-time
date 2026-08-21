@@ -65,8 +65,8 @@ module.exports = [
       {
         "type": "toggle",
         "messageKey": "WaveRest",
-        "label": "Rest ocean while backlight is off",
-        "defaultValue": true
+        "label": "Pause ocean to save battery (freezes it outdoors)",
+        "defaultValue": false
       }
     ]
   },

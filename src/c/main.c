@@ -4,6 +4,10 @@
 #define MORPH_DURATION_MS 700
 #define SECONDS_MORPH_MS 500
 #define SPIN_DURATION_MS 1400
+// Hold before the splash melts into the time. The morph in and out are
+// 700 ms each, so the clock is readable at SPLASH_MS + 700. (A 2026-08-21
+// report of a "super long" drawing splash turned out to be a CAPTURE build
+// running SPLASH_MS at 9000 — the shipped value was never the problem.)
 #define SPLASH_MS 1500
 
 // User settings, edited from the phone via Clay and persisted on the watch.
@@ -403,8 +407,9 @@ static void prv_health_handler(HealthEventType event, void *context) {
     return;
   }
   if (event == HealthEventHRVUpdate) {
+    // (To check on-watch whether events really arrive per beat, drop an
+    // APP_LOG of ppi back in here and tail `pebble logs --phone`.)
     uint16_t ppi = health_service_peek_hrv_ppi_ms();
-    APP_LOG(APP_LOG_LEVEL_INFO, "HRV ppi=%u ms", (unsigned)ppi);
     if (ppi < HEART_PPI_MIN_MS || ppi > HEART_PPI_MAX_MS) {
       return;  // dropped beat or noise: keep coasting on the last good one
     }
@@ -1088,7 +1093,17 @@ static void prv_load_settings(void) {
                         // until one is saved — set_splash's default case)
     .shake_action = 1,  // orbit spin
     .bt_vibe = false,
-    .wave_rest = 1,
+    .wave_rest = 0,     // OFF (user report, 2026-08-21: outdoors "les
+                        // vagues elles bougent pas"). The rest keys off the
+                        // BACKLIGHT, but the ALS keeps the backlight dark in
+                        // daylight while the transflective screen is at its
+                        // most readable — so the swell froze precisely when
+                        // the user was looking at it. Note this only ever
+                        // affected emery/flint/gabbro: the other four boards
+                        // have no BacklightService and have always animated
+                        // non-stop, so this default just makes every board
+                        // behave alike. Battery-conscious users can turn it
+                        // back on.
     .time_format = 0,   // follow the watch's 12/24h setting
     .show_ampm = 1,
     .wake_first = 0,    // off (user's call, 2026-08-21): the default shake

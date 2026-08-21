@@ -254,9 +254,10 @@ Run with the pebble-tool venv python inside the FHS env
   early (verified by round-tripping both layouts offline). Displayed number
   deliberately stays on the FILTERED metric while the animation uses PPI: a
   number flickering beat to beat is unreadable, an animation that does is
-  exactly the point. A temporary `APP_LOG("HRV ppi=...")` is in
-  prv_health_handler to check on-watch whether events actually arrive
-  per-beat — REMOVE IT once validated.
+  exactly the point. The beat lock is still UNVALIDATED on a real
+  wrist; the diagnostic APP_LOG was removed before the v1.5.0 release, and
+  the way to check is to drop one back into prv_health_handler and tail
+  `pebble logs --phone` while the scene is up.
 - `src/c/digits.h` — 3×5 bitmap digit font, scaled ×2 when composed so
   strokes are 2-cell plateaus like the original 42.fdf map. Plus a `%` glyph
   (battery scene). Glyph rule: strokes move between columns ORTHOGONALLY,
